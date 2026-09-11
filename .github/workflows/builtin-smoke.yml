@@ -43,14 +43,14 @@ jobs:
               const jobCardAt = html.indexOf("job-card-title");
               const builtinIdAt = html.indexOf("data-builtin-track-job-id");
               const projectAt = html.toLowerCase().indexOf("project manager");
-              const snippet = (at) => at >= 0 ? html.slice(Math.max(0, at - 180), at + 420).replace(/\s+/g, " ") : null;
+              const snippet = (at) => at >= 0 ? html.slice(Math.max(0, at - 180), at + 420).replaceAll("\n", " ").replaceAll("\r", " ").replaceAll("\t", " ") : null;
               console.log(JSON.stringify({
                 url,
                 htmlLength: html.length,
                 parsedCount: jobs.length,
                 markers: {
                   itemList: itemAt >= 0,
-                  ldJsonCount: (html.match(/application\\/ld\\+json/gi) || []).length,
+                  ldJsonCount: html.split("application/ld+json").length - 1,
                   jobCardTitle: jobCardAt >= 0,
                   builtinTrackJobId: builtinIdAt >= 0,
                   projectManagerText: projectAt >= 0
