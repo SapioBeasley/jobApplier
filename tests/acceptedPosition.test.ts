@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { acceptedPositions } from "../src/config/acceptedPositions";
 import { matchesAnyAcceptedPosition } from "../src/jobs/acceptedPosition";
 
 describe("accepted position matching", () => {
@@ -56,5 +57,16 @@ describe("accepted position matching", () => {
 
   it("does not treat an empty allowlist as accept-all", () => {
     expect(matchesAnyAcceptedPosition("Product Manager", [])).toBe(false);
+  });
+});
+
+describe("initial accepted position configuration", () => {
+  it("targets the project/program delivery family", () => {
+    expect(acceptedPositions).toEqual([
+      "project manager",
+      "program manager",
+      "project coordinator",
+      "project management specialist",
+    ]);
   });
 });
