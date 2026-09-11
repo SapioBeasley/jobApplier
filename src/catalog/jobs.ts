@@ -22,7 +22,7 @@ export type CatalogJobSource = {
   applyUrl: string | null;
 };
 
-export type CatalogJobDetail = CatalogJobListItem & {
+export type CatalogJobDetail = Omit<CatalogJobListItem, "sources"> & {
   normalizedTitle: string;
   normalizedCompany: string;
   description: string | null;
@@ -215,8 +215,20 @@ export function getCatalogJob(
     if (!row) return null;
 
     const sources = sourceRowsByJob(db, [jobId]).get(jobId) ?? [];
+    const listItem = toListItem(row, sources);
+
     return {
-      ...toListItem(row, sources),
+      id: listItem.id,
+      title: listItem.title,
+      company: listItem.company,
+      location: listItem.location,
+      applicationType: listItem.applicationType,
+      quickApply: listItem.quickApply,
+      lifecycleStatus: listItem.lifecycleStatus,
+      preferredApplyUrl: listItem.preferredApplyUrl,
+      postedAt: listItem.postedAt,
+      firstSeenAt: listItem.firstSeenAt,
+      lastSeenAt: listItem.lastSeenAt,
       normalizedTitle: row.normalized_title,
       normalizedCompany: row.normalized_company,
       description: row.description,
