@@ -23,8 +23,13 @@ GitHub Actions
     -> GitHub Release
 
 Local Next.js app
-  catalog sync
-    -> catalog.sqlite (replaceable/read-only)
+  server-only catalog sync
+    -> resolve private GitHub Release assets
+    -> verify generatedAt / SHA-256 / SQLite integrity
+    -> atomically replace catalog.sqlite
+  catalog queries
+    -> read-only / query-only catalog.sqlite
+    -> Jobs list + Job detail
   user.sqlite (private/durable)
     -> candidate profile
     -> resume
@@ -42,6 +47,29 @@ Local Next.js app
 `catalog.sqlite` contains public job-market data only. It is safe to regenerate and replace.
 
 The application must never write candidate data or application history into this database.
+
+Local application reads open the catalog in SQLite read-only/query-only mode. The only local mutation of the catalog file is whole-file replacement after a verified catalog sync.
+
+## Catalog sync contract
+
+The published `job-catalog` release contains:
+
+- `catalog.sqlite.gz`
+- `manifest.json`
+
+The local sync path is server-only. For a private GitHub repository it may use a local `CATALOG_GITHUB_TOKEN`, but that credential must never be returned to client code or written into either SQLite database.
+
+Sync behavior:
+
+1. Resolve the release assets through the GitHub API.
+2. Read the local `catalog_metadata.generated_at` if a catalog exists.
+3. If the local catalog is the same age or newer, stop without downloading the database asset.
+4. Download and decompress the remote database into a temporary file.
+5. Verify SHA-256 against the manifest's hash of the uncompressed database.
+6. Run SQLite `integrity_check`.
+7. Atomically replace the local `catalog.sqlite`.
+
+Any download, decompression, hash, or SQLite validation failure leaves the existing catalog in place. Catalog sync never opens or modifies `user.sqlite`.
 
 ## User database ownership
 
@@ -154,7 +182,7 @@ A future concrete adapter may use Puppeteer with a persistent local browser prof
 ## V1 implementation order
 
 1. Complete one source adapter and produce real catalog rows.
-2. Build jobs + queue views.
+2. Build catalog sync and Jobs list/detail views.
 3. Build candidate profile/resume/settings UI.
 4. Run queue builder against real catalog data.
 5. Choose one Quick/Easy Apply platform.

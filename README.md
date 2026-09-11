@@ -163,16 +163,26 @@ Built In currently uses structured server-rendered data over normal HTTP; Puppet
 ```bash
 cp .env.example .env.local
 npm ci
-npm run db:catalog:push
 npm run db:user:push
 npm run dev
 ```
 
+Because the repository and `job-catalog` release are private, set `CATALOG_GITHUB_TOKEN` in `.env.local` to a GitHub token that can read this repository. Never commit that token.
+
+Open the Jobs screen at:
+
+```text
+http://localhost:3000/jobs
+```
+
+Use **Sync catalog** to pull the latest published catalog before browsing jobs.
+
 ## Aggregation and catalog publication
 
-Local catalog commands:
+Local catalog commands for aggregation-development work:
 
 ```bash
+npm run db:catalog:push
 npm run aggregate
 npm run catalog:validate
 npm run catalog:manifest
@@ -194,13 +204,40 @@ restore last published catalog if present
 
 Publication validation fails closed when the catalog is empty, contains non-remote/non-US rows, contains orphaned source rows, has no successful source in the latest run, or contains known private user-state tables.
 
-`.github/workflows/aggregate-jobs.yml` can always be run with `workflow_dispatch`. Scheduled execution is configured every four hours at minute 17 in `America/Chicago`, but scheduled runs remain gated until the repository variable below is set:
+`.github/workflows/aggregate-jobs.yml` can always be run with `workflow_dispatch`. Scheduled execution is configured every four hours at minute 17 in `America/Chicago` and runs when the repository variable is set:
 
 ```text
 ENABLE_AGGREGATION=true
 ```
 
-This keeps scheduled publication disabled during source/bootstrap work while still allowing explicit validation runs.
+## Local catalog sync and Jobs UI
+
+The local app consumes the published `job-catalog` GitHub Release through a server-only sync path:
+
+```text
+GitHub Release metadata
+-> resolve manifest.json + catalog.sqlite.gz assets
+-> download with optional private-repo token
+-> compare generatedAt with local catalog
+-> decompress to a temporary file
+-> verify SHA-256 of the exact uncompressed database
+-> verify SQLite integrity
+-> atomically replace data/catalog.sqlite
+```
+
+If the remote catalog is not newer, the database asset is not downloaded. If download, hash, decompression, or SQLite validation fails, the existing local catalog is preserved. The sync path never opens or modifies `user.sqlite`.
+
+The Jobs screen reads `catalog.sqlite` with SQLite read-only/query-only mode and supports:
+
+- text search across title, company, location, and description
+- accepted-position filter
+- source filter
+- lifecycle filter
+- Quick/Easy Apply filter
+- normalized job detail view
+- source links and preferred apply link
+
+Private GitHub credentials stay server-side and are never rendered into the browser.
 
 ## Queue commands
 
@@ -237,19 +274,18 @@ catalog.sqlite.gz
 manifest.json
 ```
 
-The manifest hashes the uncompressed `catalog.sqlite`. Local synchronization must decompress into a temporary file, verify that SHA-256 and SQLite integrity, then replace the local catalog without touching `user.sqlite`.
+The manifest hashes the uncompressed `catalog.sqlite`. Local synchronization verifies that hash and SQLite integrity before replacing the local catalog without touching `user.sqlite`.
 
 ## Next vertical slice
 
-The public catalog path is now proven end to end. The next vertical slice is the local catalog consumer:
+With catalog publication, local sync, and Jobs browsing in place, the next vertical slice is private candidate state:
 
 ```text
-job-catalog release
--> verified local catalog sync
--> jobs list
--> job detail
--> search/filter
--> application eligibility visibility
+candidate profile
+-> active resume
+-> saved reusable answers
+-> local user.sqlite persistence
+-> queue eligibility context
 ```
 
-That work is tracked by the next catalog/UI issue.
+That work is tracked by issue #6.
