@@ -45,7 +45,7 @@ describe("Built In parser", () => {
     expect(jobs[0].postedAt?.toISOString()).toBe("2026-09-10T12:00:00.000Z");
   });
 
-  it("parses the current escaped ItemList embedded in server HTML", () => {
+  it("parses the current ItemList embedded outside an LD+JSON script", () => {
     const jobs = parseBuiltInListPage(currentEmbeddedFixture, now);
 
     expect(jobs).toHaveLength(1);
