@@ -7,7 +7,7 @@
     "start": "next start",
     "db:catalog:push": "drizzle-kit push --config=drizzle.catalog.config.ts",
     "db:user:push": "drizzle-kit push --config=drizzle.user.config.ts",
-    "aggregate": "tsx src/aggregation/aggregate.ts",
+    "aggregate": "tsx src/aggregation/cli.ts",
     "catalog:validate": "tsx src/aggregation/validate.ts",
     "catalog:manifest": "tsx src/aggregation/manifest.ts",
     "queue:sync": "tsx src/applications/cli/syncQueue.ts",
