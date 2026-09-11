@@ -47,6 +47,10 @@ export function canonicalizeUrl(input?: string | null): string | null {
       url.searchParams.append(key, value);
     }
 
+    if (url.pathname.length > 1) {
+      url.pathname = url.pathname.replace(/\/+$/, "");
+    }
+
     return url.toString().replace(/\/$/, "");
   } catch {
     return input.trim();
