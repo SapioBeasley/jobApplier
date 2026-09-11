@@ -1,5 +1,18 @@
 import Database from "better-sqlite3";
 
+const PRIVATE_USER_TABLES = new Set([
+  "candidate_profile",
+  "candidate_profiles",
+  "job_status",
+  "job_status_history",
+  "resumes",
+  "saved_answers",
+  "application_queue",
+  "application_attempts",
+  "application_answers",
+  "settings",
+]);
+
 export interface CatalogValidationResult {
   ok: true;
   jobCount: number;
@@ -29,6 +42,18 @@ export function validateCatalog(file: string): CatalogValidationResult {
     const integrity = db.pragma("integrity_check", { simple: true });
     if (integrity !== "ok") {
       throw new Error(`SQLite integrity_check failed: ${integrity}`);
+    }
+
+    const tableNames = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+      .all() as { name: string }[];
+    const privateTables = tableNames
+      .map((row) => row.name)
+      .filter((name) => PRIVATE_USER_TABLES.has(name));
+    if (privateTables.length > 0) {
+      throw new Error(
+        `Catalog contains private user-state tables: ${privateTables.sort().join(", ")}`,
+      );
     }
 
     const jobCount = count(db, "SELECT COUNT(*) AS count FROM jobs");
