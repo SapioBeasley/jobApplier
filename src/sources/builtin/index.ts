@@ -4,8 +4,7 @@ import { collectBuiltInJobs } from "./fetch";
 
 export const builtinAdapter: SourceAdapter = {
   name: "builtin",
-  // Enable only after the explicit live smoke check for issue #3 passes.
-  enabled: false,
+  enabled: true,
 
   async fetchJobs() {
     return collectBuiltInJobs({
