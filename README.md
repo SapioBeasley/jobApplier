@@ -9,7 +9,7 @@ JobApplier is not just a job browser. It is a pipeline:
 ```text
 Aggregate open jobs
   -> keep accepted positions
-  -> keep remote-US opportunities
+  -> keep confirmed remote-US opportunities
   -> dedupe
   -> identify supported Quick/Easy Apply jobs
   -> build application queue
@@ -32,9 +32,9 @@ It owns:
 - source adapters
 - normalization
 - accepted-position filtering
-- remote-US filtering
+- confirmed remote-US filtering
 - stable canonical IDs
-- deduplication
+- conservative deduplication
 - Quick/Easy Apply classification
 - catalog validation/publication
 
@@ -52,7 +52,7 @@ It owns:
 - attempts and outcomes
 - durable `applied` protection
 
-Candidate information must not be pushed into the GitHub Actions catalog.
+Candidate information must not be pushed into the GitHub Actions catalog. Catalog validation explicitly rejects known private user-state tables before publication.
 
 ## Development rules
 
@@ -66,30 +66,19 @@ Edit only the allowlist in:
 src/config/acceptedPositions.ts
 ```
 
-Example:
-
-```ts
-export const acceptedPositions = [
-  "product manager",
-  "technical program manager",
-] as const;
-```
-
 Matching is intentionally conservative. Titles and configured positions are normalized, then the accepted position must appear as a contiguous sequence of whole words in the job title.
 
-For an accepted position of `product manager`:
+For an accepted position of `project manager`:
 
 ```text
-MATCH     Product Manager
-MATCH     Senior Product Manager
-MATCH     Principal Product-Manager, AI
-NO MATCH  Product Marketing Manager
-NO MATCH  Product Managerial Lead
+MATCH     Project Manager
+MATCH     Senior Project Manager
+MATCH     Technical Project Manager
+NO MATCH  Product Manager
+NO MATCH  Project Managerial Lead
 ```
 
-A more-specific accepted position does not broaden downward. For example, `senior product manager` does not accept the title `Product Manager`.
-
-To add or remove a target role, edit the array only; matching behavior belongs in `src/jobs/acceptedPosition.ts` and should change only with tests first.
+A more-specific accepted position does not broaden downward. To add or remove a target role, edit the array only; matching behavior belongs in `src/jobs/acceptedPosition.ts` and should change only with tests first.
 
 An empty allowlist fails aggregation intentionally and must never mean "accept all."
 
@@ -179,15 +168,39 @@ npm run db:user:push
 npm run dev
 ```
 
-## Aggregation
+## Aggregation and catalog publication
+
+Local catalog commands:
 
 ```bash
 npm run aggregate
 npm run catalog:validate
 npm run catalog:manifest
+npm run catalog:verify-manifest
 ```
 
-`.github/workflows/aggregate-jobs.yml` is scheduled every four hours and can also be manually dispatched.
+The GitHub Actions publication sequence is:
+
+```text
+restore last published catalog if present
+-> apply catalog schema
+-> aggregate enabled sources
+-> validate SQLite integrity and publication invariants
+-> generate manifest from the exact database
+-> verify manifest SHA-256 and metadata against the database
+-> gzip catalog.sqlite
+-> publish catalog.sqlite.gz + manifest.json to the job-catalog release
+```
+
+Publication validation fails closed when the catalog is empty, contains non-remote/non-US rows, contains orphaned source rows, has no successful source in the latest run, or contains known private user-state tables.
+
+`.github/workflows/aggregate-jobs.yml` can always be run with `workflow_dispatch`. Scheduled execution is configured every four hours at minute 17 in `America/Chicago`, but scheduled runs remain gated until the repository variable below is set:
+
+```text
+ENABLE_AGGREGATION=true
+```
+
+This keeps scheduled publication disabled during source/bootstrap work while still allowing explicit validation runs.
 
 ## Queue commands
 
@@ -211,20 +224,32 @@ When ingesting a posting, identity resolution checks:
 3. one exact normalized company/title/location match
 4. deterministic fingerprint for a genuinely new job
 
+Repeated source runs update existing rows rather than duplicating them. If multiple existing jobs share the same normalized fingerprint, the aggregator does not guess which one to merge; the incoming job remains separate.
+
 Once a canonical job is locally `applied`, it must never automatically be submitted again even if the catalog refreshes or another source discovers it.
+
+## Current catalog artifact
+
+The `job-catalog` GitHub Release contains:
+
+```text
+catalog.sqlite.gz
+manifest.json
+```
+
+The manifest hashes the uncompressed `catalog.sqlite`. Local synchronization must decompress into a temporary file, verify that SHA-256 and SQLite integrity, then replace the local catalog without touching `user.sqlite`.
 
 ## Next vertical slice
 
-The architecture now has one real source adapter. The next end-to-end path is:
+The public catalog path is now proven end to end. The next vertical slice is the local catalog consumer:
 
 ```text
-Built In catalog rows
--> queue eligibility
--> candidate profile + resume
--> 1 real Quick/Easy Apply adapter
--> successful submission
--> application attempt recorded
--> duplicate re-application blocked
+job-catalog release
+-> verified local catalog sync
+-> jobs list
+-> job detail
+-> search/filter
+-> application eligibility visibility
 ```
 
-That is the next milestone.
+That work is tracked by the next catalog/UI issue.
