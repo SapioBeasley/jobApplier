@@ -1,14 +1,15 @@
 import crypto from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { openCatalogDb } from "../db/catalog/client";
 import { jobs, jobSources, sourceRuns } from "../db/catalog/schema";
-import { assertAcceptedPositionsConfigured, matchesAcceptedPosition } from "../jobs/acceptedPosition";
+import {
+  assertAcceptedPositionsConfigured,
+  matchesAcceptedPosition,
+} from "../jobs/acceptedPosition";
 import { makeNewCanonicalJobId, makeSourceRecordId } from "../jobs/identity";
 import { normalizeSourceJob } from "../jobs/normalize";
 import type { NormalizedJob } from "../jobs/types";
-import { sourceAdapters } from "../sources/registry";
-
-const now = () => new Date();
+import type { SourceAdapter } from "../sources/types";
 
 function runRecordId(runId: string, source: string) {
   return `run_${crypto
@@ -160,31 +161,55 @@ async function upsertJob(
   return existing[0] ? "updated" : "created";
 }
 
-async function main() {
-  const { db, sqlite } = openCatalogDb();
-  const runId = crypto.randomUUID();
-  const timestamp = now();
+export interface AggregationSourceResult {
+  source: string;
+  status: "success" | "failed";
+  fetched: number;
+  accepted: number;
+  created: number;
+  updated: number;
+  rejected: number;
+}
+
+export interface RunAggregationOptions {
+  catalogPath?: string;
+  adapters: readonly SourceAdapter[];
+  runId?: string;
+  timestamp?: Date;
+}
+
+export interface AggregationResult {
+  runId: string;
+  generatedAt: Date;
+  sources: AggregationSourceResult[];
+}
+
+export async function runAggregation(
+  options: RunAggregationOptions,
+): Promise<AggregationResult> {
+  assertAcceptedPositionsConfigured();
+
+  const enabledAdapters = options.adapters.filter((source) => source.enabled);
+  if (enabledAdapters.length === 0) {
+    throw new Error(
+      "No source adapters are enabled. Implement and enable at least one adapter before publishing a catalog.",
+    );
+  }
+
+  const { db, sqlite } = openCatalogDb(options.catalogPath);
+  const runId = options.runId ?? crypto.randomUUID();
+  const timestamp = options.timestamp ?? new Date();
+  const sourceResults: AggregationSourceResult[] = [];
 
   try {
-    assertAcceptedPositionsConfigured();
-
-    const enabledAdapters = sourceAdapters.filter((source) => source.enabled);
-
-    if (enabledAdapters.length === 0) {
-      throw new Error(
-        "No source adapters are enabled. Implement and enable at least one adapter before publishing a catalog.",
-      );
-    }
-
     for (const adapter of enabledAdapters) {
       const sourceRunId = runRecordId(runId, adapter.name);
-      const startedAt = now();
 
       await db.insert(sourceRuns).values({
         id: sourceRunId,
         runId,
         source: adapter.name,
-        startedAt,
+        startedAt: timestamp,
         status: "running",
       });
 
@@ -220,7 +245,7 @@ async function main() {
         await db
           .update(sourceRuns)
           .set({
-            completedAt: now(),
+            completedAt: timestamp,
             status: "success",
             jobsFetched: fetched,
             jobsAccepted: accepted,
@@ -229,11 +254,21 @@ async function main() {
             jobsRejected: rejected,
           })
           .where(eq(sourceRuns.id, sourceRunId));
+
+        sourceResults.push({
+          source: adapter.name,
+          status: "success",
+          fetched,
+          accepted,
+          created,
+          updated,
+          rejected,
+        });
       } catch (error) {
         await db
           .update(sourceRuns)
           .set({
-            completedAt: now(),
+            completedAt: timestamp,
             status: "failed",
             jobsFetched: fetched,
             jobsAccepted: accepted,
@@ -245,7 +280,15 @@ async function main() {
           })
           .where(eq(sourceRuns.id, sourceRunId));
 
-        console.error(`[${adapter.name}] failed`, error);
+        sourceResults.push({
+          source: adapter.name,
+          status: "failed",
+          fetched,
+          accepted,
+          created,
+          updated,
+          rejected,
+        });
       }
     }
 
@@ -265,13 +308,12 @@ async function main() {
       )
       .run(timestamp.toISOString());
 
-    console.log(`Aggregation complete: ${runId}`);
+    return {
+      runId,
+      generatedAt: timestamp,
+      sources: sourceResults,
+    };
   } finally {
     sqlite.close();
   }
 }
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
