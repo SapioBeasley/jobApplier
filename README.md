@@ -108,13 +108,15 @@ The stable canonical `job_id` links them.
 Only jobs that meet all eligibility rules enter the queue:
 
 - active catalog listing
-- remote-US
-- remote work arrangement
+- confirmed remote-US eligibility
+- confirmed `remote` work arrangement
 - confirmed Quick/Easy Apply
 - supported application type
 - application URL present
 - not previously applied
 - not skipped
+
+Hybrid, onsite, and unknown work arrangements do not enter automatic processing.
 
 Queue states:
 
@@ -151,7 +153,7 @@ Unknown required questions, essays, assessments, CAPTCHAs, authentication/securi
 
 ## Initial job sources
 
-- Built In — stub, disabled until implemented
+- Built In — enabled. Uses server-rendered HTTP pages, structured `ItemList` data, and rendered card metadata. CI uses captured local fixtures; source failures surface to the source runner rather than fabricating data.
 - GlobalWork.ai — stub, disabled until implemented
 - Remote.co — disabled until an appropriate programmatic ingestion path is established
 
@@ -164,6 +166,8 @@ API
 -> HTTP
 -> Puppeteer
 ```
+
+Built In currently uses structured server-rendered data over normal HTTP; Puppeteer is not required for this source.
 
 ## Setup
 
@@ -211,11 +215,10 @@ Once a canonical job is locally `applied`, it must never automatically be submit
 
 ## Next vertical slice
 
-The architecture is now sufficient to stop designing and build one end-to-end path:
+The architecture now has one real source adapter. The next end-to-end path is:
 
 ```text
-1 real source adapter
--> real catalog rows
+Built In catalog rows
 -> queue eligibility
 -> candidate profile + resume
 -> 1 real Quick/Easy Apply adapter
