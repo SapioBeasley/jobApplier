@@ -60,7 +60,7 @@ Coding agents and contributors must follow [`AGENTS.md`](./AGENTS.md) and the te
 
 ## Accepted positions
 
-Edit:
+Edit only the allowlist in:
 
 ```text
 src/config/acceptedPositions.ts
@@ -75,7 +75,23 @@ export const acceptedPositions = [
 ] as const;
 ```
 
-An empty allowlist fails aggregation intentionally.
+Matching is intentionally conservative. Titles and configured positions are normalized, then the accepted position must appear as a contiguous sequence of whole words in the job title.
+
+For an accepted position of `product manager`:
+
+```text
+MATCH     Product Manager
+MATCH     Senior Product Manager
+MATCH     Principal Product-Manager, AI
+NO MATCH  Product Marketing Manager
+NO MATCH  Product Managerial Lead
+```
+
+A more-specific accepted position does not broaden downward. For example, `senior product manager` does not accept the title `Product Manager`.
+
+To add or remove a target role, edit the array only; matching behavior belongs in `src/jobs/acceptedPosition.ts` and should change only with tests first.
+
+An empty allowlist fails aggregation intentionally and must never mean "accept all."
 
 ## Two SQLite databases
 
@@ -153,7 +169,7 @@ API
 
 ```bash
 cp .env.example .env.local
-npm install
+npm ci
 npm run db:catalog:push
 npm run db:user:push
 npm run dev
