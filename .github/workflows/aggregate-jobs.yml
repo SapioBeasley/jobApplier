@@ -2,6 +2,11 @@ name: Aggregate jobs
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - issue-4-catalog-pipeline
+    paths:
+      - .github/workflows/aggregate-jobs.yml
   schedule:
     - cron: "17 */4 * * *"
       timezone: "America/Chicago"
@@ -17,7 +22,8 @@ jobs:
   aggregate:
     # Manual runs are always available for validating source/catalog changes.
     # Scheduled runs remain disabled until ENABLE_AGGREGATION=true is set.
-    if: ${{ github.event_name == 'workflow_dispatch' || vars.ENABLE_AGGREGATION == 'true' }}
+    # The push allowance is temporary for issue #4 live publication validation.
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.ENABLE_AGGREGATION == 'true' || github.event_name == 'push' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
