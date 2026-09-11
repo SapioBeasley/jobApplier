@@ -12,6 +12,11 @@ const fixture = fs.readFileSync(
   "utf8",
 );
 
+const currentEmbeddedFixture = fs.readFileSync(
+  path.join(process.cwd(), "tests/fixtures/builtin-current-embedded.html"),
+  "utf8",
+);
+
 const now = new Date("2026-09-11T12:00:00.000Z");
 
 describe("Built In parser", () => {
@@ -38,6 +43,22 @@ describe("Built In parser", () => {
       salaryPeriod: "year",
     });
     expect(jobs[0].postedAt?.toISOString()).toBe("2026-09-10T12:00:00.000Z");
+  });
+
+  it("parses the current escaped ItemList embedded in server HTML", () => {
+    const jobs = parseBuiltInListPage(currentEmbeddedFixture, now);
+
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({
+      sourceJobId: "10743679",
+      title: "Project Manager - 26302",
+      company: "Enverus",
+      location: "United States",
+      remoteType: "remote",
+      remoteUsEligible: true,
+      quickApply: "yes",
+      applicationType: "easy_apply",
+    });
   });
 
   it("classifies hybrid and non-US jobs conservatively", () => {
