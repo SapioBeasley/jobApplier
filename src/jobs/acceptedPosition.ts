@@ -1,6 +1,25 @@
 import { acceptedPositions } from "../config/acceptedPositions";
 import { normalizeText } from "./identity";
 
+function containsTokenPhrase(title: string, position: string): boolean {
+  const titleTokens = title.split(" ").filter(Boolean);
+  const positionTokens = position.split(" ").filter(Boolean);
+
+  if (positionTokens.length === 0 || positionTokens.length > titleTokens.length) {
+    return false;
+  }
+
+  for (let start = 0; start <= titleTokens.length - positionTokens.length; start += 1) {
+    const matches = positionTokens.every(
+      (token, offset) => titleTokens[start + offset] === token,
+    );
+
+    if (matches) return true;
+  }
+
+  return false;
+}
+
 export function matchesAnyAcceptedPosition(
   title: string,
   positions: readonly string[],
@@ -8,13 +27,9 @@ export function matchesAnyAcceptedPosition(
   const normalizedTitle = normalizeText(title);
   const normalizedPositions = positions.map(normalizeText).filter(Boolean);
 
-  return normalizedPositions.some((position) => {
-    return (
-      normalizedTitle === position ||
-      normalizedTitle.includes(position) ||
-      position.includes(normalizedTitle)
-    );
-  });
+  return normalizedPositions.some((position) =>
+    containsTokenPhrase(normalizedTitle, position),
+  );
 }
 
 const normalizedAcceptedPositions = acceptedPositions
