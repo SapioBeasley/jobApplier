@@ -64,6 +64,7 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
     lifecycleStatus: first(params.status),
     quickApply: first(params.quickApply),
   };
+  const syncStatus = first(params.sync);
 
   let jobs;
   let allJobs;
@@ -85,13 +86,51 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
   return (
     <main style={shell}>
       <header style={{ marginBottom: 28 }}>
-        <p style={{ margin: 0, color: "#617087", fontWeight: 700, letterSpacing: 0.5 }}>
-          JOBAPPLIER
-        </p>
-        <h1 style={{ fontSize: 36, margin: "8px 0 8px" }}>Jobs</h1>
-        <p style={{ margin: 0, color: "#617087", maxWidth: 760 }}>
-          Remote US opportunities from the local read-only catalog. Filtering here never changes candidate or application history.
-        </p>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 20, alignItems: "start" }}>
+          <div>
+            <p style={{ margin: 0, color: "#617087", fontWeight: 700, letterSpacing: 0.5 }}>
+              JOBAPPLIER
+            </p>
+            <h1 style={{ fontSize: 36, margin: "8px 0 8px" }}>Jobs</h1>
+            <p style={{ margin: 0, color: "#617087", maxWidth: 760 }}>
+              Remote US opportunities from the local read-only catalog. Filtering here never changes candidate or application history.
+            </p>
+          </div>
+
+          <form action="/api/catalog/sync" method="post">
+            <button
+              type="submit"
+              style={{
+                border: "1px solid #b9c4d3",
+                borderRadius: 8,
+                padding: "10px 14px",
+                background: "#fff",
+                color: "#172033",
+                fontWeight: 700,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Sync catalog
+            </button>
+          </form>
+        </div>
+
+        {syncStatus === "updated" ? (
+          <p style={{ margin: "12px 0 0", color: "#22633b", fontWeight: 700 }}>
+            Catalog updated from GitHub Release.
+          </p>
+        ) : null}
+        {syncStatus === "current" ? (
+          <p style={{ margin: "12px 0 0", color: "#526078", fontWeight: 700 }}>
+            Local catalog is already current.
+          </p>
+        ) : null}
+        {syncStatus === "failed" ? (
+          <p style={{ margin: "12px 0 0", color: "#9b2c2c", fontWeight: 700 }}>
+            Catalog sync failed. The existing local catalog was preserved.
+          </p>
+        ) : null}
       </header>
 
       <section style={{ ...panel, marginBottom: 24 }} aria-label="Job filters">
@@ -235,8 +274,8 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
                     <span>{job.lifecycleStatus}</span>
                     <span>·</span>
                     <span>{job.applicationType}</span>
-                    {posted ? <><span>·</span><span>Posted {posted}</span></> : null}
-                    {job.sources.length > 0 ? <><span>·</span><span>{job.sources.map(displaySource).join(", ")}</span></> : null}
+                    {posted ? <span>· Posted {posted}</span> : null}
+                    {job.sources.length > 0 ? <span>· {job.sources.map(displaySource).join(", ")}</span> : null}
                   </div>
 
                   <div style={{ marginTop: 16 }}>
