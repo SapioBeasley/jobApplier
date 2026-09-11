@@ -34,7 +34,9 @@ jobs:
         run: |
           npx tsx -e '
             import { collectBuiltInJobs } from "./src/sources/builtin/fetch";
-            const jobs = await collectBuiltInJobs({ positions: ["project manager"], maxPages: 1 });
-            if (jobs.length === 0) throw new Error("Built In smoke returned zero parsed jobs");
-            console.log(JSON.stringify({ count: jobs.length, sample: jobs.slice(0, 3).map((job) => ({ id: job.sourceJobId, title: job.title, company: job.company, location: job.location, remoteType: job.remoteType, remoteUsEligible: job.remoteUsEligible, quickApply: job.quickApply })) }, null, 2));
+            (async () => {
+              const jobs = await collectBuiltInJobs({ positions: ["project manager"], maxPages: 1 });
+              if (jobs.length === 0) throw new Error("Built In smoke returned zero parsed jobs");
+              console.log(JSON.stringify({ count: jobs.length, sample: jobs.slice(0, 3).map((job) => ({ id: job.sourceJobId, title: job.title, company: job.company, location: job.location, remoteType: job.remoteType, remoteUsEligible: job.remoteUsEligible, quickApply: job.quickApply })) }, null, 2));
+            })().catch((error) => { console.error(error); process.exit(1); });
           '
