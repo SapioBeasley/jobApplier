@@ -1,6 +1,10 @@
 import type { CSSProperties } from "react";
 import { getAcceptedPositions } from "../../jobs/acceptedPosition";
-import { listCatalogJobs, type CatalogJobFilters } from "../../catalog/jobs";
+import {
+  listCatalogJobs,
+  type CatalogJobFilters,
+  type CatalogJobListItem,
+} from "../../catalog/jobs";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -66,8 +70,8 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
   };
   const syncStatus = first(params.sync);
 
-  let jobs;
-  let allJobs;
+  let jobs: CatalogJobListItem[];
+  let allJobs: CatalogJobListItem[];
   let catalogError: string | null = null;
 
   try {
