@@ -4,6 +4,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import { runAggregation } from "../src/aggregation/aggregate";
+import { normalizeSourceJob } from "../src/jobs/normalize";
 import type { SourceJob } from "../src/jobs/types";
 import type { SourceAdapter } from "../src/sources/types";
 
@@ -127,6 +128,44 @@ function failingAdapter(name: string): SourceAdapter {
   };
 }
 
+function seedAmbiguousCanonicalJob(
+  db: Database.Database,
+  id: string,
+  dedupeKey: string,
+  applyUrl: string,
+) {
+  const timestamp = Date.parse("2026-09-10T11:00:00.000Z");
+  db.prepare(
+    `INSERT INTO jobs (
+      id, title, normalized_title, company, normalized_company,
+      location, normalized_location, remote_type, remote_us_eligible,
+      application_type, quick_apply, preferred_apply_url,
+      first_seen_at, last_seen_at, lifecycle_status, missed_runs,
+      dedupe_key, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    "Senior Project Manager",
+    "senior project manager",
+    "Acme",
+    "acme",
+    "United States",
+    "united states",
+    "remote",
+    1,
+    "unknown",
+    "unknown",
+    applyUrl,
+    timestamp,
+    timestamp,
+    "active",
+    0,
+    dedupeKey,
+    timestamp,
+    timestamp,
+  );
+}
+
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -157,12 +196,23 @@ describe("catalog aggregation persistence", () => {
     });
 
     const verify = new Database(catalogPath);
-    expect((verify.prepare("SELECT COUNT(*) count FROM jobs").get() as { count: number }).count).toBe(1);
-    expect((verify.prepare("SELECT COUNT(*) count FROM job_sources").get() as { count: number }).count).toBe(1);
-    expect((verify.prepare("SELECT id FROM jobs").get() as { id: string }).id).toBe(first.id);
+    expect(
+      (verify.prepare("SELECT COUNT(*) count FROM jobs").get() as { count: number })
+        .count,
+    ).toBe(1);
+    expect(
+      (verify.prepare("SELECT COUNT(*) count FROM job_sources").get() as {
+        count: number;
+      }).count,
+    ).toBe(1);
+    expect((verify.prepare("SELECT id FROM jobs").get() as { id: string }).id).toBe(
+      first.id,
+    );
 
     const secondRun = verify
-      .prepare("SELECT jobs_created, jobs_updated FROM source_runs WHERE run_id = 'run-2'")
+      .prepare(
+        "SELECT jobs_created, jobs_updated FROM source_runs WHERE run_id = 'run-2'",
+      )
       .get() as { jobs_created: number; jobs_updated: number };
     expect(secondRun).toEqual({ jobs_created: 0, jobs_updated: 1 });
     verify.close();
@@ -207,8 +257,136 @@ describe("catalog aggregation persistence", () => {
         preferred_apply_url: "https://ats.example.test/apply/42",
       },
     ]);
-    expect((verify.prepare("SELECT COUNT(*) count FROM job_sources").get() as { count: number }).count).toBe(2);
+    expect(
+      (verify.prepare("SELECT COUNT(*) count FROM job_sources").get() as {
+        count: number;
+      }).count,
+    ).toBe(2);
     verify.close();
+  });
+
+  it("merges listings from different sources when the canonical apply URL is identical", async () => {
+    const catalogPath = createTempCatalog();
+    const applyUrl = "https://ats.example.test/apply/shared-77";
+
+    await runAggregation({
+      catalogPath,
+      adapters: [
+        adapter("fixture-a", [sourceJob({ applyUrl })]),
+        adapter("fixture-b", [
+          sourceJob({
+            sourceJobId: "job-b-77",
+            sourceUrl: "https://other.example.test/jobs/77",
+            title: "Technical Project Manager",
+            applyUrl,
+          }),
+        ]),
+      ],
+      runId: "run-strong-dedupe",
+      timestamp: new Date("2026-09-10T12:00:00.000Z"),
+    });
+
+    const db = new Database(catalogPath);
+    expect((db.prepare("SELECT COUNT(*) count FROM jobs").get() as { count: number }).count).toBe(1);
+    expect(
+      (db.prepare("SELECT COUNT(*) count FROM job_sources").get() as { count: number })
+        .count,
+    ).toBe(2);
+    db.close();
+  });
+
+  it("does not merge an incoming job when the normalized fingerprint is already ambiguous", async () => {
+    const catalogPath = createTempCatalog();
+    const normalized = normalizeSourceJob(sourceJob({ sourceJobId: null }));
+    const db = new Database(catalogPath);
+    seedAmbiguousCanonicalJob(
+      db,
+      "job_seed_one",
+      normalized.dedupeKey,
+      "https://ats.example.test/apply/seed-one",
+    );
+    seedAmbiguousCanonicalJob(
+      db,
+      "job_seed_two",
+      normalized.dedupeKey,
+      "https://ats.example.test/apply/seed-two",
+    );
+    db.close();
+
+    await runAggregation({
+      catalogPath,
+      adapters: [
+        adapter("fixture-c", [
+          sourceJob({
+            sourceJobId: "ambiguous-new",
+            sourceUrl: "https://third.example.test/jobs/ambiguous-new",
+            applyUrl: null,
+          }),
+        ]),
+      ],
+      runId: "run-ambiguous",
+      timestamp: new Date("2026-09-10T12:00:00.000Z"),
+    });
+
+    const verify = new Database(catalogPath);
+    expect(
+      (verify.prepare("SELECT COUNT(*) count FROM jobs").get() as { count: number })
+        .count,
+    ).toBe(3);
+    verify.close();
+  });
+
+  it("stores only confirmed remote-US jobs in the catalog", async () => {
+    const catalogPath = createTempCatalog();
+
+    await runAggregation({
+      catalogPath,
+      adapters: [
+        adapter("fixture-a", [
+          sourceJob({ sourceJobId: "remote", sourceUrl: "https://jobs.test/remote" }),
+          sourceJob({
+            sourceJobId: "hybrid",
+            sourceUrl: "https://jobs.test/hybrid",
+            remoteType: "hybrid",
+          }),
+          sourceJob({
+            sourceJobId: "unknown",
+            sourceUrl: "https://jobs.test/unknown",
+            remoteType: "unknown",
+          }),
+          sourceJob({
+            sourceJobId: "onsite",
+            sourceUrl: "https://jobs.test/onsite",
+            remoteType: "onsite",
+          }),
+          sourceJob({
+            sourceJobId: "non-us",
+            sourceUrl: "https://jobs.test/non-us",
+            remoteUsEligible: false,
+          }),
+        ]),
+      ],
+      runId: "run-remote-filter",
+      timestamp: new Date("2026-09-10T12:00:00.000Z"),
+    });
+
+    const db = new Database(catalogPath);
+    const rows = db.prepare("SELECT remote_type FROM jobs").all() as {
+      remote_type: string;
+    }[];
+    expect(rows).toEqual([{ remote_type: "remote" }]);
+
+    const run = db
+      .prepare(
+        "SELECT jobs_fetched, jobs_accepted, jobs_rejected FROM source_runs WHERE run_id = 'run-remote-filter'",
+      )
+      .get() as {
+      jobs_fetched: number;
+      jobs_accepted: number;
+      jobs_rejected: number;
+    };
+    expect(run).toEqual({ jobs_fetched: 5, jobs_accepted: 1, jobs_rejected: 4 });
+    db.close();
   });
 
   it("records a failed source without discarding jobs from successful sources", async () => {
@@ -231,7 +409,11 @@ describe("catalog aggregation persistence", () => {
       .prepare("SELECT source, status, error_message FROM source_runs ORDER BY source")
       .all() as { source: string; status: string; error_message: string | null }[];
 
-    expect(runs[0]).toMatchObject({ source: "fixture-a", status: "success", error_message: null });
+    expect(runs[0]).toMatchObject({
+      source: "fixture-a",
+      status: "success",
+      error_message: null,
+    });
     expect(runs[1].source).toBe("fixture-failure");
     expect(runs[1].status).toBe("failed");
     expect(runs[1].error_message).toContain("fixture-failure unavailable");
