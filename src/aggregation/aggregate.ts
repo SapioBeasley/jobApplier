@@ -231,7 +231,7 @@ export async function runAggregation(
             continue;
           }
 
-          if (!job.remoteUsEligible || job.remoteType === "onsite") {
+          if (!job.remoteUsEligible || job.remoteType !== "remote") {
             rejected += 1;
             continue;
           }
