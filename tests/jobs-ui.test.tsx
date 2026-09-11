@@ -67,7 +67,7 @@ afterEach(() => {
 });
 
 describe("Jobs UI", () => {
-  it("renders real catalog jobs and active filters on the jobs page", async () => {
+  it("renders real catalog jobs, active filters, and the server-side sync control", async () => {
     process.env.CATALOG_DB_PATH = createCatalog();
     const element = await JobsPage({
       searchParams: Promise.resolve({ q: "Acme", quickApply: "yes" }),
@@ -78,6 +78,9 @@ describe("Jobs UI", () => {
     expect(html).toContain("Acme");
     expect(html).toContain("Quick / Easy Apply");
     expect(html).toContain("View job");
+    expect(html).toContain("Sync catalog");
+    expect(html).toContain('action="/api/catalog/sync"');
+    expect(html).toContain('method="post"');
   });
 
   it("renders normalized detail fields and source/apply links", async () => {
