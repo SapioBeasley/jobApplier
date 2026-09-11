@@ -49,6 +49,16 @@ describe("application eligibility", () => {
     expect(result.reasons).toContain("not_remote");
   });
 
+  it("rejects an unknown work arrangement because remote must be confirmed", () => {
+    const result = evaluateApplicationEligibility({
+      ...eligible,
+      remoteType: "unknown",
+    });
+
+    expect(result.eligible).toBe(false);
+    expect(result.reasons).toContain("not_remote");
+  });
+
   it("returns all applicable rejection reasons", () => {
     const result = evaluateApplicationEligibility({
       ...eligible,
