@@ -1,6 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+  buildBuiltInSearchUrl,
+  collectBuiltInJobs,
+} from "../src/sources/builtin/fetch";
 import { parseBuiltInListPage } from "../src/sources/builtin/parser";
 
 const fixture = fs.readFileSync(
@@ -66,5 +70,46 @@ describe("Built In parser", () => {
       quickApply: "unknown",
       applyUrl: null,
     });
+  });
+});
+
+describe("Built In fetch orchestration", () => {
+  it("builds a remote Built In search URL for each accepted-position query", () => {
+    expect(buildBuiltInSearchUrl("project manager", 2)).toBe(
+      "https://builtin.com/jobs/remote?search=project%20manager&page=2",
+    );
+  });
+
+  it("paginates and deduplicates without applying accepted-position filtering inside the adapter", async () => {
+    const calls: string[] = [];
+
+    const jobs = await collectBuiltInJobs({
+      positions: ["project manager"],
+      maxPages: 3,
+      now,
+      fetchPage: async (url) => {
+        calls.push(url);
+        return fixture;
+      },
+    });
+
+    expect(jobs).toHaveLength(4);
+    expect(calls).toEqual([
+      "https://builtin.com/jobs/remote?search=project%20manager&page=1",
+      "https://builtin.com/jobs/remote?search=project%20manager&page=2",
+    ]);
+  });
+
+  it("surfaces a fetch failure to the source runner instead of returning fabricated data", async () => {
+    await expect(
+      collectBuiltInJobs({
+        positions: ["project manager"],
+        maxPages: 1,
+        now,
+        fetchPage: async () => {
+          throw new Error("Built In unavailable");
+        },
+      }),
+    ).rejects.toThrow("Built In unavailable");
   });
 });
