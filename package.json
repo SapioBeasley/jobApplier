@@ -1,0 +1,38 @@
+{
+  "name": "job-aggregator-v1",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "db:catalog:push": "drizzle-kit push --config=drizzle.catalog.config.ts",
+    "db:user:push": "drizzle-kit push --config=drizzle.user.config.ts",
+    "aggregate": "tsx src/aggregation/aggregate.ts",
+    "catalog:validate": "tsx src/aggregation/validate.ts",
+    "catalog:manifest": "tsx src/aggregation/manifest.ts",
+    "queue:sync": "tsx src/applications/cli/syncQueue.ts",
+    "queue:run": "tsx src/applications/cli/runQueue.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm test && npm run build"
+  },
+  "dependencies": {
+    "better-sqlite3": "latest",
+    "drizzle-orm": "latest",
+    "next": "latest",
+    "puppeteer": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "latest",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "drizzle-kit": "latest",
+    "tsx": "latest",
+    "typescript": "latest",
+    "vitest": "latest"
+  }
+}

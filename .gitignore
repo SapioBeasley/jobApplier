@@ -1,0 +1,9 @@
+node_modules/
+.next/
+.env
+.env.local
+data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal
+data/*.gz
+data/manifest.json

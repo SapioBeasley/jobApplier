@@ -1,0 +1,96 @@
+name: Aggregate jobs
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */4 * * *"
+      timezone: "America/Chicago"
+
+concurrency:
+  group: job-catalog
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  aggregate:
+    # Aggregation is intentionally disabled in a fresh clone until at least one
+    # source adapter and accepted position are configured. Set the repository
+    # variable ENABLE_AGGREGATION=true when the first source is ready.
+    if: ${{ vars.ENABLE_AGGREGATION == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      CATALOG_DB_PATH: ./data/catalog.sqlite
+      CATALOG_MANIFEST_PATH: ./data/manifest.json
+      CATALOG_RELEASE_TAG: job-catalog
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build application
+        run: npm run build
+
+      - name: Restore current catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mkdir -p data
+
+          if gh release view "$CATALOG_RELEASE_TAG" >/dev/null 2>&1; then
+            gh release download "$CATALOG_RELEASE_TAG" \
+              --pattern "catalog.sqlite.gz" \
+              --dir data \
+              --clobber || true
+
+            if [ -f data/catalog.sqlite.gz ]; then
+              gunzip -f data/catalog.sqlite.gz
+            fi
+          fi
+
+      - name: Create or update catalog schema
+        run: npm run db:catalog:push
+
+      - name: Install Puppeteer browser
+        run: npx puppeteer browsers install chrome
+
+      - name: Aggregate sources
+        run: npm run aggregate
+
+      - name: Validate catalog
+        run: npm run catalog:validate
+
+      - name: Generate manifest
+        run: npm run catalog:manifest
+
+      - name: Compress catalog
+        run: gzip -9 -k -f data/catalog.sqlite
+
+      - name: Publish catalog release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if ! gh release view "$CATALOG_RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$CATALOG_RELEASE_TAG" \
+              --title "Job Catalog" \
+              --notes "Machine-generated job catalog. Do not edit manually."
+          fi
+
+          gh release upload "$CATALOG_RELEASE_TAG" \
+            data/catalog.sqlite.gz \
+            data/manifest.json \
+            --clobber
