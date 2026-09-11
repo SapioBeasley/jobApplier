@@ -15,10 +15,9 @@ permissions:
 
 jobs:
   aggregate:
-    # Aggregation is intentionally disabled in a fresh clone until at least one
-    # source adapter and accepted position are configured. Set the repository
-    # variable ENABLE_AGGREGATION=true when the first source is ready.
-    if: ${{ vars.ENABLE_AGGREGATION == 'true' }}
+    # Manual runs are always available for validating source/catalog changes.
+    # Scheduled runs remain disabled until ENABLE_AGGREGATION=true is set.
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.ENABLE_AGGREGATION == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -65,9 +64,6 @@ jobs:
       - name: Create or update catalog schema
         run: npm run db:catalog:push
 
-      - name: Install Puppeteer browser
-        run: npx puppeteer browsers install chrome
-
       - name: Aggregate sources
         run: npm run aggregate
 
@@ -76,6 +72,9 @@ jobs:
 
       - name: Generate manifest
         run: npm run catalog:manifest
+
+      - name: Verify manifest against catalog
+        run: npm run catalog:verify-manifest
 
       - name: Compress catalog
         run: gzip -9 -k -f data/catalog.sqlite
