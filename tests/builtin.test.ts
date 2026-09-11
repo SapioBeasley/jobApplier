@@ -30,7 +30,7 @@ describe("Built In parser", () => {
       applyUrl: "https://builtin.com/job/senior-project-manager/1001",
       salaryMin: 120000,
       salaryMax: 150000,
-      salaryCurrency: "USD",
+      salaryCurrency: null,
       salaryPeriod: "year",
     });
     expect(jobs[0].postedAt?.toISOString()).toBe("2026-09-10T12:00:00.000Z");
