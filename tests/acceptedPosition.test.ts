@@ -2,9 +2,23 @@ import { describe, expect, it } from "vitest";
 import { matchesAnyAcceptedPosition } from "../src/jobs/acceptedPosition";
 
 describe("accepted position matching", () => {
+  it("matches an exact configured position", () => {
+    expect(
+      matchesAnyAcceptedPosition("Product Manager", ["product manager"]),
+    ).toBe(true);
+  });
+
   it("matches a configured position phrase inside a more specific title", () => {
     expect(
       matchesAnyAcceptedPosition("Senior Product Manager, AI", [
+        "product manager",
+      ]),
+    ).toBe(true);
+  });
+
+  it("matches across punctuation after normalization", () => {
+    expect(
+      matchesAnyAcceptedPosition("Senior Product-Manager (AI)", [
         "product manager",
       ]),
     ).toBe(true);
@@ -15,6 +29,28 @@ describe("accepted position matching", () => {
       matchesAnyAcceptedPosition("Product Marketing Manager", [
         "product manager",
       ]),
+    ).toBe(false);
+  });
+
+  it("does not let a more-specific allowlist entry accept a broader title", () => {
+    expect(
+      matchesAnyAcceptedPosition("Product Manager", [
+        "senior product manager",
+      ]),
+    ).toBe(false);
+  });
+
+  it("matches whole normalized words rather than arbitrary substrings", () => {
+    expect(
+      matchesAnyAcceptedPosition("Product Managerial Lead", [
+        "product manager",
+      ]),
+    ).toBe(false);
+  });
+
+  it("ignores blank configured positions", () => {
+    expect(
+      matchesAnyAcceptedPosition("Product Manager", ["", "   "]),
     ).toBe(false);
   });
 
