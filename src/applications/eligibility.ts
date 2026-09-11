@@ -22,9 +22,7 @@ export function evaluateApplicationEligibility(
 
   if (input.lifecycleStatus !== "active") reasons.push("job_not_active");
   if (!input.remoteUsEligible) reasons.push("not_remote_us_eligible");
-  if (input.remoteType === "onsite" || input.remoteType === "hybrid") {
-    reasons.push("not_remote");
-  }
+  if (input.remoteType !== "remote") reasons.push("not_remote");
   if (input.quickApply !== "yes") reasons.push("not_confirmed_quick_apply");
   if (!SUPPORTED_TYPES.has(input.applicationType)) {
     reasons.push("unsupported_application_type");
