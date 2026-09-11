@@ -172,6 +172,62 @@ function findItemLists(value: unknown, output: BuiltInListItem[][]): void {
   }
 }
 
+function parseEmbeddedListItems(html: string): BuiltInListItem[] {
+  const output: BuiltInListItem[] = [];
+  const prefix = '{"@type":"ListItem"';
+  let cursor = 0;
+
+  while (cursor < html.length) {
+    const start = html.indexOf(prefix, cursor);
+    if (start === -1) break;
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let end = -1;
+
+    for (let index = start; index < html.length; index += 1) {
+      const char = html[index];
+
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === "\\") {
+          escaped = true;
+        } else if (char === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (char === '"') {
+        inString = true;
+      } else if (char === "{") {
+        depth += 1;
+      } else if (char === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          end = index + 1;
+          break;
+        }
+      }
+    }
+
+    if (end === -1) break;
+
+    try {
+      const item = JSON.parse(html.slice(start, end)) as BuiltInListItem;
+      if (item["@type"] === "ListItem") output.push(item);
+    } catch {
+      // Ignore an invalid embedded object and continue searching later entries.
+    }
+
+    cursor = end;
+  }
+
+  return output;
+}
+
 function parseItemList(html: string): BuiltInListItem[] {
   const lists: BuiltInListItem[][] = [];
   const scriptPattern = /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
@@ -181,11 +237,20 @@ function parseItemList(html: string): BuiltInListItem[] {
       const json = JSON.parse(decodeHtml(match[1]).trim()) as unknown;
       findItemLists(json, lists);
     } catch {
-      // Ignore malformed JSON-LD blocks; other blocks may still be valid.
+      // Ignore malformed JSON-LD blocks; other structured data may still be valid.
     }
   }
 
-  return lists.flat().filter((item) => item?.["@type"] === "ListItem");
+  const candidates = [...lists.flat(), ...parseEmbeddedListItems(html)];
+  const unique = new Map<string, BuiltInListItem>();
+
+  for (const item of candidates) {
+    if (item?.["@type"] !== "ListItem") continue;
+    const key = `${item.position ?? ""}|${item.url ?? ""}|${item.name ?? ""}`;
+    if (!unique.has(key)) unique.set(key, item);
+  }
+
+  return [...unique.values()];
 }
 
 function parseCards(html: string, now: Date): Map<string, CardMetadata> {
