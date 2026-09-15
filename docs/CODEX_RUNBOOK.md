@@ -18,7 +18,9 @@ jobs:next
 -> check the published job-catalog release
 -> refresh local catalog.sqlite only when newer
 -> verify SHA-256 + SQLite integrity before replacement
+-> initialize the minimal durable user ledger if absent
 -> consult durable user.sqlite status
+-> report eligibility diagnostics
 -> return only the next eligible jobs
 
 Codex + Ego Lite
@@ -31,14 +33,15 @@ Codex must not perform broad job-board discovery during an application session.
 
 ## One-time local setup
 
-Install dependencies and initialize the private local ledger schema:
+Install dependencies:
 
 ```bash
 npm ci
-npm run db:user:push
 ```
 
-For this private repository/release, set `CATALOG_GITHUB_TOKEN` in a local environment file or shell environment. Never commit the token.
+`jobs:next` now creates the minimal private durable `job_status` and `job_status_history` ledger when `user.sqlite` does not exist yet. Existing private tables and rows are preserved. `npm run db:user:push` remains available for development/full-schema initialization, but it is not required before the normal Codex handoff path.
+
+If repository/release access requires authentication, set `CATALOG_GITHUB_TOKEN` in a local environment file or shell environment. Never commit the token.
 
 No Next.js UI, manual catalog-sync step, or persistent application queue is required for the Codex workflow.
 
@@ -59,6 +62,17 @@ The limit must be an integer from 1 through 100. The default is 10.
 ```json
 {
   "catalogStatus": "updated",
+  "diagnostics": {
+    "totalEvaluated": 120,
+    "totalEligible": 8,
+    "totalReturned": 8,
+    "ineligibleReasonCounts": {
+      "not_confirmed_quick_apply": 82,
+      "unsupported_application_type": 82,
+      "not_remote_us_eligible": 10,
+      "durable_needs_review": 1
+    }
+  },
   "jobs": [
     {
       "jobId": "canonical-job-id",
@@ -74,18 +88,28 @@ The limit must be an integer from 1 through 100. The default is 10.
 }
 ```
 
-`catalogStatus` is either `updated` or `current`.
+`catalogStatus` is either `updated` or `current`. Diagnostics explain the selection funnel without weakening eligibility rules. A single job may contribute to more than one ineligibility reason count.
 
-An empty eligible set is successful:
+An empty eligible set is successful and still includes diagnostics:
 
 ```json
 {
   "catalogStatus": "current",
+  "diagnostics": {
+    "totalEvaluated": 25,
+    "totalEligible": 0,
+    "totalReturned": 0,
+    "ineligibleReasonCounts": {
+      "not_confirmed_quick_apply": 25
+    }
+  },
   "jobs": []
 }
 ```
 
 The command returns only jobs that are active, confirmed remote-US, confirmed remote, confirmed Easy/Quick Apply, have a supported application type and application URL, and are not durably marked `applied`, `skipped`, `needs_review`, or `failed`. Review/failed jobs require an explicit future retry/reset path instead of being automatically handed back to Codex and consuming more browser credits.
+
+When the eligible count is unexpectedly small, inspect `diagnostics.ineligibleReasonCounts`. Do not broaden the batch, reclassify jobs, or bypass a safety rule during an application run.
 
 ### Error contract
 
@@ -137,7 +161,7 @@ npm run application:result -- \
 
 Supported statuses are `applied`, `needs_review`, `failed`, and `skipped`. `needs_review` and `failed` require a non-empty reason.
 
-The command validates that the canonical job exists in the local catalog before changing `user.sqlite`, updates the current durable status, and appends immutable status history in one transaction. Repeating the same durable status is idempotent. `applied` is terminal. `needs_review`, `failed`, and `skipped` require an explicit future reset before another application result can replace them.
+The command validates that the canonical job exists in the local catalog, safely initializes the minimal durable ledger if it is absent, updates the current durable status, and appends immutable status history in one transaction. Repeating the same durable status is idempotent. `applied` is terminal. `needs_review`, `failed`, and `skipped` require an explicit future reset before another application result can replace them.
 
 On success, stdout is stable JSON such as:
 
@@ -158,14 +182,15 @@ Do not substitute direct SQLite writes or another state-tracking format if the c
 For every session:
 
 1. Read `AGENTS.md` and `prompts/APPLY_JOBS.md`.
-2. Run `npm run jobs:next -- --limit <N>`.
-3. Do not search job boards or broaden the returned batch.
-4. Process one returned job at a time with Ego Lite.
-5. Use only explicit candidate facts available to the established application workflow. Never invent candidate-specific answers.
-6. CAPTCHA, assessments, security challenges, unknown required questions, ambiguous facts, or unsupported forms are `needs_review`; do not bypass them.
-7. Immediately persist the outcome with `application:result` before moving to another job.
-8. Do not automatically retry a job with any durable terminal/review outcome.
-9. Stop when the requested success target is reached, the supplied batch is exhausted, or the user asks to stop.
+2. Install dependencies with `npm ci` if needed.
+3. Run `npm run jobs:next -- --limit <N>` and inspect the diagnostics before browser work.
+4. Do not search job boards or broaden the returned batch.
+5. Process one returned job at a time with Ego Lite.
+6. Use only explicit candidate facts available to the established application workflow. Never invent candidate-specific answers.
+7. CAPTCHA, assessments, security challenges, unknown required questions, ambiguous facts, or unsupported forms are `needs_review`; do not bypass them.
+8. Immediately persist the outcome with `application:result` before moving to another job.
+9. Do not automatically retry a job with any durable terminal/review outcome.
+10. Stop when the requested success target is reached, the supplied batch is exhausted, or the user asks to stop.
 
 ## What Codex should not do
 
