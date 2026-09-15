@@ -50,6 +50,13 @@ type StatusRow = {
   status: string;
 };
 
+const BLOCKED_AUTOMATIC_STATUSES = new Set([
+  "applied",
+  "skipped",
+  "needs_review",
+  "failed",
+]);
+
 function assertLimit(limit: number) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
     throw new Error("jobs:next limit must be an integer between 1 and 100");
@@ -149,17 +156,22 @@ export async function getNextJobs(
       .all() as JobRow[];
 
     const eligible = rows
-      .filter((row) =>
-        evaluateApplicationEligibility({
+      .filter((row) => {
+        const userStatus = statuses.get(row.id) ?? null;
+        if (userStatus && BLOCKED_AUTOMATIC_STATUSES.has(userStatus)) {
+          return false;
+        }
+
+        return evaluateApplicationEligibility({
           lifecycleStatus: row.lifecycle_status,
           remoteUsEligible: row.remote_us_eligible === 1,
           remoteType: row.remote_type,
           quickApply: row.quick_apply,
           applicationType: row.application_type,
           preferredApplyUrl: row.preferred_apply_url,
-          userStatus: statuses.get(row.id) ?? null,
-        }).eligible,
-      )
+          userStatus,
+        }).eligible;
+      })
       .slice(0, limit);
 
     const sources = sourcesForJobs(
