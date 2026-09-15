@@ -1,6 +1,6 @@
 # JobApplier V1
 
-Personal, local-first job aggregation and deterministic Codex handoff for remote-US Quick/Easy Apply opportunities.
+Personal, local-first job aggregation and deterministic Codex handoff for remote-US Quick/Easy Apply opportunities. The repository stops at verified job handoff and durable outcome recording; browser execution remains external.
 
 ## V1 workflow
 
