@@ -180,6 +180,37 @@ describe("recordApplicationResult", () => {
     db.close();
   });
 
+  it.each(["saved", "reviewed"])(
+    "allows the pre-application %s state to become an application outcome",
+    (previousStatus) => {
+      const { catalogPath, userPath } = setup();
+      const seed = new Database(userPath);
+      seed
+        .prepare("INSERT INTO job_status(job_id, status, updated_at) VALUES (?, ?, ?)")
+        .run("job-1", previousStatus, 100);
+      seed.close();
+
+      recordApplicationResult({
+        catalogPath,
+        userPath,
+        jobId: "job-1",
+        status: "applied",
+        now: () => 200,
+        id: () => `history-${previousStatus}`,
+      });
+
+      const db = openUser(userPath);
+      expect(db.prepare("SELECT status, applied_at FROM job_status WHERE job_id = ?").get("job-1")).toEqual({
+        status: "applied",
+        applied_at: 200,
+      });
+      expect(
+        db.prepare("SELECT previous_status, new_status FROM job_status_history WHERE job_id = ?").get("job-1"),
+      ).toEqual({ previous_status: previousStatus, new_status: "applied" });
+      db.close();
+    },
+  );
+
   it("treats repeated recording of the same durable status as idempotent", () => {
     const { catalogPath, userPath } = setup();
     const seed = new Database(userPath);
