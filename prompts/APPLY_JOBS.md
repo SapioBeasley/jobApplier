@@ -4,11 +4,21 @@ Read `AGENTS.md` and `docs/CODEX_RUNBOOK.md` before doing anything else.
 
 Use the repository only as the prepared job/state source. Do not perform job discovery, broad web searches, title matching, remote-US classification, deduplication, or prior-application research yourself.
 
-Run:
+Install dependencies if they are not already present:
+
+```bash
+npm ci
+```
+
+Then run:
 
 ```bash
 npm run jobs:next -- --limit 10
 ```
+
+`jobs:next` refreshes the public catalog and safely initializes the minimal private durable status ledger if `user.sqlite` does not exist yet. Do not open any job until this command succeeds.
+
+Before browser work, report the returned `diagnostics` summary and print the returned jobs in a concise table including title, company, source, application type, application URL, and canonical job ID. A low `totalEligible` count is not permission to broaden the search or weaken eligibility rules; report the `ineligibleReasonCounts` instead.
 
 Use only the jobs returned by that command. Process them one at a time in returned order using Ego Lite and the existing application workflow.
 
