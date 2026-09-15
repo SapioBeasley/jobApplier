@@ -32,6 +32,38 @@ export function ensureUserLedger(userPath: string): void {
 
       CREATE INDEX IF NOT EXISTS job_status_history_job_idx
         ON job_status_history(job_id);
+
+      CREATE TABLE IF NOT EXISTS candidate_profiles (
+        id TEXT PRIMARY KEY,
+        first_name TEXT NOT NULL,
+        last_name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        phone TEXT,
+        city TEXT,
+        state TEXT,
+        country TEXT NOT NULL DEFAULT 'US',
+        linkedin_url TEXT,
+        portfolio_url TEXT,
+        work_authorized_us INTEGER,
+        requires_sponsorship INTEGER,
+        years_experience INTEGER,
+        desired_salary INTEGER,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS saved_answers (
+        id TEXT PRIMARY KEY,
+        key TEXT NOT NULL,
+        question_pattern TEXT NOT NULL,
+        answer TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS saved_answers_key_uq
+        ON saved_answers(key);
     `);
   } finally {
     db.close();
