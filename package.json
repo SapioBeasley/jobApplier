@@ -13,6 +13,7 @@
     "catalog:verify-manifest": "tsx src/aggregation/verifyManifestCli.ts",
     "queue:sync": "tsx src/applications/cli/syncQueue.ts",
     "queue:run": "tsx src/applications/cli/runQueue.ts",
+    "jobs:next": "tsx scripts/jobs-next.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "npm test && npm run build"
