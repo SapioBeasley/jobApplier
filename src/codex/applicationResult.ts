@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import Database from "better-sqlite3";
+import { ensureUserLedger } from "../db/user/ledger";
 
 export const APPLICATION_RESULT_STATUSES = [
   "applied",
@@ -111,6 +112,7 @@ export function recordApplicationResult(
   const id = input.id ?? (() => `history_${crypto.randomUUID()}`);
 
   assertCanonicalJobExists(catalogPath, jobId);
+  ensureUserLedger(userPath);
 
   const user = new Database(userPath, { fileMustExist: true });
   user.pragma("foreign_keys = ON");
