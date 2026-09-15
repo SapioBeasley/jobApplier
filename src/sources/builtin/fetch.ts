@@ -2,7 +2,7 @@ import type { SourceJob } from "../../jobs/types";
 import { parseBuiltInListPage } from "./parser";
 
 const BUILTIN_ORIGIN = "https://builtin.com";
-const DEFAULT_MAX_PAGES = 3;
+const DEFAULT_MAX_PAGES = 10;
 const HARD_MAX_PAGES = 10;
 
 export type BuiltInPageFetcher = (url: string) => Promise<string>;
