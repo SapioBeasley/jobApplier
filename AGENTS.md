@@ -32,18 +32,26 @@ The PRD in `docs/PRD.md` defines product scope. The architecture in `docs/TECHNI
 
 All behavior changes follow red -> green -> refactor. Read `docs/TDD.md` before changing production code.
 
+**No behavior-affecting production change may merge without automated test coverage for every changed observable behavior and the relevant failure/safety paths.** This includes business rules, validation, parsing, persistence/state transitions, CLI/API contracts, workflow/config behavior, and side effects.
+
 At minimum:
 
-- Add or update a failing test that expresses the desired behavior.
+- Add or update a failing test that expresses the desired behavior before changing production code.
 - Run the focused test and confirm the failure is for the expected reason.
-- Make the smallest production change that passes it.
+- Cover the successful path plus relevant rejection/error/edge paths and every safety invariant touched by the change.
+- For persistence or external side effects, test both the intended mutation and what must remain unchanged.
+- Make the smallest production change that passes the focused tests.
 - Run the full test suite.
 - Refactor only while tests remain green.
-- Run `npm run check` before considering work complete.
+- Run `npm run check` before considering work complete or mergeable.
 
-A production bug fix requires a regression test unless the code is truly untestable; in that case, first create the smallest seam needed to test it.
+If behavior is difficult to test, create the smallest deterministic seam, fixture, fake, or dependency injection point needed to test it first. "Untestable" is not an exemption from coverage.
 
-Do not weaken, delete, skip, or broaden assertions merely to make CI pass unless the product requirement itself changed.
+A production bug fix always requires a failing regression test before the fix.
+
+Documentation-only changes that do not alter executable behavior do not require artificial red tests, but they still require the normal CI/check gate. Configuration, schema, scripts, and workflow changes count as behavior changes when they affect runtime or CI behavior.
+
+Do not weaken, delete, skip, or broaden assertions merely to make CI pass unless the product requirement itself changed and the replacement tests prove the new requirement.
 
 ## Test boundaries
 
@@ -66,13 +74,18 @@ Browser/application adapters should separate DOM interpretation from orchestrati
 
 A change is done only when:
 
-- acceptance behavior is covered by tests,
+- every changed observable behavior has automated coverage,
+- relevant success, failure, edge, and safety paths are covered,
+- any touched persistence/side-effect boundary proves both intended mutation and isolation,
 - `npm test` passes,
 - `npm run build` passes,
+- `npm run check` passes in the final branch/PR state,
 - no secrets or personal candidate data are committed,
 - schema changes are reflected in the relevant Drizzle schema/migrations,
 - documentation is updated when an architectural or product contract changes,
 - failure states are explicit rather than silently ignored.
+
+Manual testing may supplement automated tests but never replaces them for behavior-changing work.
 
 ## Implementation preferences
 
@@ -95,9 +108,11 @@ Do not add these unless the PRD is explicitly changed.
 
 For each vertical slice:
 
-1. state the acceptance behavior,
-2. write the failing test,
-3. implement the smallest slice end-to-end,
-4. keep application and source adapters behind existing contracts,
-5. update docs if the contract changed,
-6. run `npm run check`.
+1. state the acceptance behavior, including negative/failure cases,
+2. write the failing tests for all changed behavior and touched safety invariants,
+3. confirm the focused tests fail for the intended reason,
+4. implement the smallest slice end-to-end,
+5. run focused tests and then the full suite,
+6. keep application and source adapters behind existing contracts,
+7. update docs if the contract changed,
+8. run `npm run check` and do not merge unless it is green.
