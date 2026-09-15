@@ -11,6 +11,8 @@
     "catalog:verify-manifest": "tsx src/aggregation/verifyManifestCli.ts",
     "jobs:next": "tsx scripts/jobs-next.ts",
     "application:result": "tsx scripts/application-result.ts",
+    "application:retry": "tsx scripts/application-retry.ts",
+    "candidate:import": "tsx scripts/candidate-import.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "npm test && npm run build"

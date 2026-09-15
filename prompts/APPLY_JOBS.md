@@ -10,28 +10,39 @@ Install dependencies if they are not already present:
 npm ci
 ```
 
+If the user provided a resume or candidate fact source in this Work thread, extract only facts explicitly supported by that source into a temporary local JSON file and import them with:
+
+```bash
+npm run candidate:import -- --file <temporary-candidate-facts.json>
+```
+
+Do not commit that JSON file or the resume. Do not infer work authorization, sponsorship, language fluency, or other unstated screening facts.
+
 Then run:
 
 ```bash
 npm run jobs:next -- --limit 10
 ```
 
-`jobs:next` refreshes the public catalog and safely initializes the minimal private durable status ledger if `user.sqlite` does not exist yet. Do not open any job until this command succeeds.
+`jobs:next` refreshes the public catalog, rejects contradictory non-US regional jobs, prioritizes Houston/Texas within the confirmed US-remote eligible set, and safely initializes the private durable ledger if needed. Do not open any job until this command succeeds.
 
-Before browser work, report the returned `diagnostics` summary and print the returned jobs in a concise table including title, company, source, application type, application URL, and canonical job ID. A low `totalEligible` count is not permission to broaden the search or weaken eligibility rules; report the `ineligibleReasonCounts` instead.
+Before browser work, report `diagnostics` and print the returned jobs with title, company, source, application type, application URL, and canonical job ID. A low eligible count is not permission to broaden the search or weaken eligibility rules.
 
-Use only the jobs returned by that command. Process them one at a time in returned order using Ego Lite and the existing application workflow.
+Use only returned jobs, one at a time, in returned order.
 
 For each job:
-
 1. Open only its supplied `applicationUrl`.
-2. Apply using only explicit candidate facts already available to the established workflow. Never invent a candidate-specific answer.
-3. If you encounter an unknown required question, ambiguous candidate fact, CAPTCHA, assessment, security challenge, unexpected authentication flow, or unsupported form structure, stop that job and classify it as `needs_review`. Do not bypass the challenge.
-4. Immediately record the outcome with `npm run application:result` before opening another job. Include `--reason "..."` for `needs_review` or `failed`.
-5. Do not automatically retry a job after any durable `applied`, `skipped`, `needs_review`, or `failed` outcome. A review/failed retry must be explicitly requested through a supported reset/retry path.
+2. Use only explicit candidate facts from private state/source material. Never invent a candidate-specific answer.
+3. Unknown required question, ambiguous fact, CAPTCHA, assessment, security challenge, unexpected authentication, or unsupported form -> `needs_review`.
+4. Immediately record the outcome with `npm run application:result` before opening another job.
+5. Do not automatically retry a durable outcome.
 
-Valid outcomes are `applied`, `needs_review`, `failed`, and `skipped`. `needs_review` and `failed` must include a concrete reason.
+If the user later supplies the missing fact for a `needs_review` job, import the fact first, then explicitly reset only that job with:
 
-If `application:result` fails, stop the application session and report the problem. Do not write ad-hoc SQL or invent another state-tracking mechanism.
+```bash
+npm run application:retry -- --job-id <canonical-job-id>
+```
 
-Stop after 5 confirmed successful submissions, after all returned jobs are exhausted, or if I ask you to stop. `needs_review` and `failed` jobs do not count as successful submissions and should not prevent you from continuing to unrelated returned jobs once their outcome has been durably recorded.
+After the explicit reset, rerun `jobs:next`. Never reset an `applied` job.
+
+Stop after 5 confirmed successful submissions, after all returned jobs are exhausted, or if I ask you to stop.
