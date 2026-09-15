@@ -16,8 +16,16 @@ export type NextJob = {
   postedAt: number | null;
 };
 
+export type NextJobsDiagnostics = {
+  totalEvaluated: number;
+  totalEligible: number;
+  totalReturned: number;
+  ineligibleReasonCounts: Record<string, number>;
+};
+
 export type NextJobsResult = {
   catalogStatus: CatalogRefreshStatus;
+  diagnostics: NextJobsDiagnostics;
   jobs: NextJob[];
 };
 
@@ -102,6 +110,22 @@ function sourcesForJobs(
   return result;
 }
 
+function reasonsForRow(row: JobRow, userStatus: string | null): string[] {
+  if (userStatus && BLOCKED_AUTOMATIC_STATUSES.has(userStatus)) {
+    return [`durable_${userStatus}`];
+  }
+
+  return evaluateApplicationEligibility({
+    lifecycleStatus: row.lifecycle_status,
+    remoteUsEligible: row.remote_us_eligible === 1,
+    remoteType: row.remote_type,
+    quickApply: row.quick_apply,
+    applicationType: row.application_type,
+    preferredApplyUrl: row.preferred_apply_url,
+    userStatus,
+  }).reasons;
+}
+
 async function defaultRefreshCatalog(catalogPath: string) {
   const result = await syncCatalogFromGitHubRelease({ catalogPath });
   return { status: result.status };
@@ -144,25 +168,22 @@ export async function getNextJobs(
       )
       .all() as JobRow[];
 
-    const eligible = rows
-      .filter((row) => {
-        const userStatus = statuses.get(row.id) ?? null;
-        if (userStatus && BLOCKED_AUTOMATIC_STATUSES.has(userStatus)) {
-          return false;
-        }
+    const ineligibleReasonCounts: Record<string, number> = {};
+    const eligibleRows: JobRow[] = [];
 
-        return evaluateApplicationEligibility({
-          lifecycleStatus: row.lifecycle_status,
-          remoteUsEligible: row.remote_us_eligible === 1,
-          remoteType: row.remote_type,
-          quickApply: row.quick_apply,
-          applicationType: row.application_type,
-          preferredApplyUrl: row.preferred_apply_url,
-          userStatus,
-        }).eligible;
-      })
-      .slice(0, limit);
+    for (const row of rows) {
+      const reasons = reasonsForRow(row, statuses.get(row.id) ?? null);
+      if (reasons.length === 0) {
+        eligibleRows.push(row);
+        continue;
+      }
 
+      for (const reason of reasons) {
+        ineligibleReasonCounts[reason] = (ineligibleReasonCounts[reason] ?? 0) + 1;
+      }
+    }
+
+    const eligible = eligibleRows.slice(0, limit);
     const sources = sourcesForJobs(
       db,
       eligible.map((row) => row.id),
@@ -170,6 +191,12 @@ export async function getNextJobs(
 
     return {
       catalogStatus: refresh.status,
+      diagnostics: {
+        totalEvaluated: rows.length,
+        totalEligible: eligibleRows.length,
+        totalReturned: eligible.length,
+        ineligibleReasonCounts,
+      },
       jobs: eligible.map((row) => ({
         jobId: row.id,
         title: row.title,
