@@ -85,7 +85,7 @@ An empty eligible set is successful:
 }
 ```
 
-The command returns only jobs that are active, confirmed remote-US, confirmed remote, confirmed Easy/Quick Apply, have a supported application type and application URL, and are not durably marked `applied` or `skipped`.
+The command returns only jobs that are active, confirmed remote-US, confirmed remote, confirmed Easy/Quick Apply, have a supported application type and application URL, and are not durably marked `applied`, `skipped`, `needs_review`, or `failed`. Review/failed jobs require an explicit future retry/reset path instead of being automatically handed back to Codex and consuming more browser credits.
 
 ### Error contract
 
@@ -116,7 +116,7 @@ failed
 skipped
 ```
 
-`needs_review` and `failed` require a concrete reason. `applied` is terminal for automatic handoff: a canonical job marked applied must never be returned automatically again.
+`needs_review` and `failed` require a concrete reason. All four outcomes suppress automatic handoff; `applied` is permanently terminal for automatic execution, while any future retry of a review/failed item must be explicit rather than automatic.
 
 Until `application:result` is implemented, do not substitute direct SQLite writes or an improvised state format. Stop the real application session and report that durable result recording is not ready.
 
@@ -131,7 +131,7 @@ For every session:
 5. Use only explicit candidate facts available to the established application workflow. Never invent candidate-specific answers.
 6. CAPTCHA, assessments, security challenges, unknown required questions, ambiguous facts, or unsupported forms are `needs_review`; do not bypass them.
 7. Immediately persist the outcome before moving to another job.
-8. Never retry a canonical job that is durably `applied`.
+8. Do not automatically retry a job with any durable terminal/review outcome.
 9. Stop when the requested success target is reached, the supplied batch is exhausted, or the user asks to stop.
 
 ## What Codex should not do
