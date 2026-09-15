@@ -41,7 +41,7 @@ Candidate data, credentials, resumes, saved answers, and application history mus
 
 The current V1 CLI uses durable job status/history to suppress prior outcomes. Replacing `catalog.sqlite` must never erase or modify `user.sqlite`.
 
-Legacy private tables may remain in an existing `user.sqlite`; cleanup is intentionally non-destructive.
+`jobs:next` and `application:result` safely initialize the minimal V1 `job_status` / `job_status_history` ledger when it is absent. Existing private tables and rows are preserved. Legacy private tables may remain in an existing `user.sqlite`; cleanup is intentionally non-destructive.
 
 ## Accepted positions
 
@@ -55,10 +55,15 @@ Matching is intentionally conservative. An empty allowlist fails aggregation and
 
 ## Primary local commands
 
-Install dependencies and initialize local schemas as needed:
+Install dependencies:
 
 ```bash
 npm ci
+```
+
+Development/full-schema setup remains available when needed:
+
+```bash
 npm run db:catalog:push
 npm run db:user:push
 ```
@@ -69,7 +74,7 @@ Get the next deterministic batch:
 npm run jobs:next -- --limit 10
 ```
 
-`jobs:next` automatically checks the published `job-catalog` release. A newer catalog is downloaded, decompressed, SHA-256 verified, SQLite integrity checked, and atomically installed before selection. Refresh failure preserves the installed catalog and fails closed.
+`jobs:next` automatically checks the published `job-catalog` release. A newer catalog is downloaded, decompressed, SHA-256 verified, SQLite integrity checked, and atomically installed before selection. Refresh failure preserves the installed catalog and fails closed. The command also returns eligibility diagnostics (`totalEvaluated`, `totalEligible`, `totalReturned`, and `ineligibleReasonCounts`) so a small eligible batch can be explained without weakening safety rules.
 
 Record the result of each external Codex/Ego Lite attempt immediately:
 
@@ -95,6 +100,10 @@ Automatic handoff requires all of the following:
 - no durable blocking local outcome
 
 Unknown, hybrid, onsite, or unsupported jobs are not automatically handed to Codex.
+
+## Built In coverage
+
+Built In aggregation searches each accepted position with a bounded maximum of 10 result pages and still stops early on empty or duplicate-tail pages. This increases catalog breadth without changing title matching, remote-US requirements, or Quick/Easy Apply safety rules.
 
 ## External application safety
 
