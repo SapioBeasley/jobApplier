@@ -1,6 +1,6 @@
-import fs from "node:fs";
 import Database from "better-sqlite3";
 import { evaluateApplicationEligibility } from "../applications/eligibility";
+import { ensureUserLedger } from "../db/user/ledger";
 import { syncCatalogFromGitHubRelease } from "../sync/githubRelease";
 
 export type CatalogRefreshStatus = "updated" | "current";
@@ -64,21 +64,9 @@ function assertLimit(limit: number) {
 }
 
 function readUserStatuses(userPath: string): Map<string, string> {
-  if (!fs.existsSync(userPath)) return new Map();
-
   const db = new Database(userPath, { readonly: true, fileMustExist: true });
   db.pragma("query_only = ON");
   try {
-    const hasStatusTable = db
-      .prepare(
-        "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'job_status'",
-      )
-      .get() as { present: number } | undefined;
-
-    if (!hasStatusTable) {
-      throw new Error("user.sqlite is missing required job_status table");
-    }
-
     const rows = db
       .prepare("SELECT job_id, status FROM job_status")
       .all() as StatusRow[];
@@ -137,6 +125,7 @@ export async function getNextJobs(
   const refreshCatalog = args.refreshCatalog ?? defaultRefreshCatalog;
 
   const refresh = await refreshCatalog(catalogPath);
+  ensureUserLedger(userPath);
   const statuses = readUserStatuses(userPath);
 
   const db = new Database(catalogPath, { readonly: true, fileMustExist: true });
