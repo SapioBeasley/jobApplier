@@ -9,7 +9,6 @@ export const builtinAdapter: SourceAdapter = {
   async fetchJobs() {
     return collectBuiltInJobs({
       positions: acceptedPositions,
-      maxPages: 3,
     });
   },
 };
