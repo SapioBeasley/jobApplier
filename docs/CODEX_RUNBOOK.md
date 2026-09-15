@@ -24,7 +24,7 @@ jobs:next
 Codex + Ego Lite
 -> process one returned job at a time
 -> use the existing application workflow
--> record the outcome immediately
+-> record the outcome immediately with application:result
 ```
 
 Codex must not perform broad job-board discovery during an application session.
@@ -99,7 +99,9 @@ Codex must stop rather than bypass a catalog-refresh or database error.
 
 ## Record each application outcome
 
-Issue #23 owns the durable result command contract:
+Immediately after each Ego Lite attempt, run exactly one durable result command before opening another job.
+
+Applied:
 
 ```bash
 npm run application:result -- \
@@ -107,18 +109,49 @@ npm run application:result -- \
   --status applied
 ```
 
-Supported target statuses are:
+Needs review:
 
-```text
-applied
-needs_review
-failed
-skipped
+```bash
+npm run application:result -- \
+  --job-id <canonical-job-id> \
+  --status needs_review \
+  --reason "unknown required question"
 ```
 
-`needs_review` and `failed` require a concrete reason. All four outcomes suppress automatic handoff; `applied` is permanently terminal for automatic execution, while any future retry of a review/failed item must be explicit rather than automatic.
+Failed:
 
-Until `application:result` is implemented, do not substitute direct SQLite writes or an improvised state format. Stop the real application session and report that durable result recording is not ready.
+```bash
+npm run application:result -- \
+  --job-id <canonical-job-id> \
+  --status failed \
+  --reason "application form changed"
+```
+
+Skipped:
+
+```bash
+npm run application:result -- \
+  --job-id <canonical-job-id> \
+  --status skipped
+```
+
+Supported statuses are `applied`, `needs_review`, `failed`, and `skipped`. `needs_review` and `failed` require a non-empty reason.
+
+The command validates that the canonical job exists in the local catalog before changing `user.sqlite`, updates the current durable status, and appends immutable status history in one transaction. Repeating the same durable status is idempotent. `applied` is terminal. `needs_review`, `failed`, and `skipped` require an explicit future reset before another application result can replace them.
+
+On success, stdout is stable JSON such as:
+
+```json
+{"jobId":"canonical-job-id","status":"applied","changed":true}
+```
+
+On failure, stderr is JSON and the command exits non-zero:
+
+```json
+{"error":"reason"}
+```
+
+Do not substitute direct SQLite writes or another state-tracking format if the command fails.
 
 ## Codex execution rules
 
@@ -130,7 +163,7 @@ For every session:
 4. Process one returned job at a time with Ego Lite.
 5. Use only explicit candidate facts available to the established application workflow. Never invent candidate-specific answers.
 6. CAPTCHA, assessments, security challenges, unknown required questions, ambiguous facts, or unsupported forms are `needs_review`; do not bypass them.
-7. Immediately persist the outcome before moving to another job.
+7. Immediately persist the outcome with `application:result` before moving to another job.
 8. Do not automatically retry a job with any durable terminal/review outcome.
 9. Stop when the requested success target is reached, the supplied batch is exhausted, or the user asks to stop.
 
