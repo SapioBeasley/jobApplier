@@ -2,209 +2,114 @@
 
 ## Objective
 
-JobApplier has two independent responsibilities:
+JobApplier V1 separates public job-market preparation from private browser execution:
 
-1. **Discover opportunities** remotely using GitHub Actions.
-2. **Process applications** locally using the candidate's private data and browser session.
+1. **GitHub Actions** discovers, normalizes, filters, deduplicates, validates, and publishes public job data.
+2. **Local CLI state** refreshes that catalog, deterministically selects eligible jobs, and records durable outcomes.
+3. **Codex + Ego Lite** performs application-site interaction externally, one job at a time, using explicit candidate data.
 
-The durable contract between those systems is the canonical `job_id`.
+The canonical `job_id` is the durable identity across refreshes and application history.
 
 ## System boundary
 
 ```text
 GitHub Actions
-  source adapters
+  SourceAdapter implementations
     -> normalize
     -> acceptedPositions
-    -> remote-US
-    -> stable ID / dedupe
+    -> confirmed remote-US
+    -> stable identity / conservative dedupe
     -> Quick/Easy Apply classification
     -> catalog.sqlite
-    -> GitHub Release
+    -> manifest + GitHub Release
 
-Local Next.js app
-  server-only catalog sync
-    -> resolve private GitHub Release assets
-    -> verify generatedAt / SHA-256 / SQLite integrity
-    -> atomically replace catalog.sqlite
-  catalog queries
-    -> read-only / query-only catalog.sqlite
-    -> Jobs list + Job detail
-  user.sqlite (private/durable)
-    -> candidate profile
-    -> resume
-    -> saved answers
-    -> application queue
-    -> attempts / outcomes
-  application runner
-    -> one queued job at a time
-    -> application adapter
-    -> submitted | needs_review | failed
+Local CLI
+  jobs:next
+    -> inspect published job-catalog release
+    -> verify manifest / SHA-256 / SQLite integrity
+    -> atomically replace catalog.sqlite when newer
+    -> read public catalog + durable status filters
+    -> return deterministic eligible jobs only
+
+  application:result
+    -> validate canonical job exists
+    -> update user.sqlite status transactionally
+    -> append immutable job_status_history
+
+External execution
+  Codex + Ego Lite
+    -> open one returned application URL at a time
+    -> use explicit candidate facts only
+    -> record outcome immediately through application:result
 ```
 
 ## Catalog ownership
 
-`catalog.sqlite` contains public job-market data only. It is safe to regenerate and replace.
+`catalog.sqlite` contains replaceable public job-market data only. Candidate data, resumes, credentials, saved answers, application history, and other private state must never be written into the catalog or publication artifacts.
 
-The application must never write candidate data or application history into this database.
-
-Local application reads open the catalog in SQLite read-only/query-only mode. The only local mutation of the catalog file is whole-file replacement after a verified catalog sync.
+Catalog refresh is whole-file replacement only after verification. It must never open, migrate, replace, or mutate `user.sqlite`.
 
 ## Catalog sync contract
 
-The published `job-catalog` release contains:
+The `job-catalog` release contains `catalog.sqlite.gz` and `manifest.json`.
 
-- `catalog.sqlite.gz`
-- `manifest.json`
+`jobs:next` owns refresh. There is no standalone user-facing catalog-sync command or UI in V1.
 
-The local sync path is server-only. For a private GitHub repository it may use a local `CATALOG_GITHUB_TOKEN`, but that credential must never be returned to client code or written into either SQLite database.
+Refresh behavior:
 
-Sync behavior:
-
-1. Resolve the release assets through the GitHub API.
-2. Read the local `catalog_metadata.generated_at` if a catalog exists.
-3. If the local catalog is the same age or newer, stop without downloading the database asset.
-4. Download and decompress the remote database into a temporary file.
-5. Verify SHA-256 against the manifest's hash of the uncompressed database.
+1. Resolve release assets through the GitHub API.
+2. Compare the published `generatedAt` with the installed catalog when present.
+3. Avoid database replacement when the local catalog is current or newer.
+4. Download and decompress a newer catalog into a temporary file.
+5. Verify the SHA-256 of the exact uncompressed database.
 6. Run SQLite `integrity_check`.
-7. Atomically replace the local `catalog.sqlite`.
+7. Atomically replace `catalog.sqlite`.
+8. On any failure, preserve the existing catalog and fail closed without returning jobs from a failed refresh attempt.
 
-Any download, decompression, hash, or SQLite validation failure leaves the existing catalog in place. Catalog sync never opens or modifies `user.sqlite`.
+## Private durable state
 
-## User database ownership
+`user.sqlite` is private and durable. V1 actively depends on `job_status` and `job_status_history` for automatic handoff suppression and auditability.
 
-`user.sqlite` is the local application ledger. It must never be overwritten by catalog sync.
+Legacy candidate, resume, answer, queue, or attempt tables may remain in an existing database for migration safety, but V1 does not require those tables or destructive cleanup of user data.
 
-V1 tables:
+`applied` is terminal. `needs_review`, `failed`, and `skipped` are also excluded from automatic `jobs:next` handoff until a separate explicit reset/retry mechanism exists.
 
-- `candidate_profiles`
-- `resumes`
-- `saved_answers`
-- `job_status`
-- `job_status_history`
-- `application_queue`
-- `application_attempts`
-- `application_answers`
-- `settings`
+## Eligibility and handoff
 
-## Application eligibility
+A job can be returned by `jobs:next` only when all required public facts are confirmed:
 
-A job is automatically queueable only when:
+- active lifecycle
+- `remote_us_eligible = true`
+- remote work arrangement
+- confirmed Quick/Easy Apply metadata
+- supported application type
+- application URL present
+- no durable blocking local outcome
 
-- catalog lifecycle status is active
-- remote-US eligibility is confirmed
-- work arrangement is remote
-- `quick_apply = yes`
-- application type is currently supported (`quick_apply` or `easy_apply` in V1)
-- application URL exists
-- local status is not `applied`
-- local status is not `skipped`
-
-The queue builder is deterministic and idempotent.
-
-## Queue semantics
-
-States:
-
-```text
-queued -> applying -> applied
-                  -> needs_review
-                  -> failed
-queued -> skipped
-```
-
-Only one job is processed at a time.
-
-`applied` is terminal for automatic execution. A canonical job in this state must not automatically enter the queue again.
-
-## Application adapters
-
-Application automation is platform-specific and must be implemented behind:
-
-```ts
-interface ApplicationAdapter {
-  name: string;
-  canHandle(url: string): boolean | Promise<boolean>;
-  apply(context: ApplicationContext): Promise<ApplicationResult>;
-}
-```
-
-Adapters own DOM selectors and navigation. The runner owns lifecycle, logging, and duplicate prevention.
-
-This keeps LinkedIn-style Easy Apply, a board-specific Quick Apply flow, or an ATS-specific flow isolated from one another.
-
-## Submission rule
-
-Adapters must not invent candidate-specific facts.
-
-They may submit only if all required information can be resolved from:
-
-- candidate profile
-- active resume
-- explicit saved answer
-- deterministic form values that do not require a candidate claim
-
-If a required answer is unknown or ambiguous, return `needs_review`.
-
-Other automatic `needs_review` conditions include:
-
-- CAPTCHA
-- assessment
-- free-response essay without an explicit stored answer
-- unexpected authentication or security challenge
-- unsupported page structure
-- missing required local candidate data
-
-## Attempts and auditing
-
-Every automation attempt is recorded before the adapter runs.
-
-Final outcomes:
-
-- `submitted`
-- `needs_review`
-- `failed`
-
-Where useful, adapter implementations should also persist each answer used into `application_answers` with its source (`candidate_profile`, `saved_answer`, `resume`, `manual`). Avoid unnecessary storage of sensitive values.
-
-## Failure isolation
-
-A failed or review-required job does not stop the queue. The runner records the result, releases the active slot, and continues with the next queued job.
-
-The user can stop a run only between jobs in V1.
+Selection and ordering are deterministic. No persistent application queue is required.
 
 ## Browser execution
 
-Browser automation runs locally, not in GitHub Actions.
+The repository contains no production application-site DOM/navigation runner in V1. Codex + Ego Lite performs browser interaction externally. Application-site automation details must not be embedded into aggregation code or catalog artifacts.
 
-A future concrete adapter may use Puppeteer with a persistent local browser profile when authentication is required. Credentials must not be placed in source control or `catalog.sqlite`.
+Codex must never invent candidate-specific facts. Unknown required questions, ambiguous candidate data, CAPTCHA, assessments, security challenges, unsupported structures, or missing required information result in `needs_review` and must not be bypassed.
 
-## V1 implementation order
+## Failure isolation
 
-1. Complete one source adapter and produce real catalog rows.
-2. Build catalog sync and Jobs list/detail views.
-3. Build candidate profile/resume/settings UI.
-4. Run queue builder against real catalog data.
-5. Choose one Quick/Easy Apply platform.
-6. Implement one application adapter end-to-end.
-7. Add `needs_review` UI and saved-answer capture.
-8. Add additional application adapters one at a time.
+Every application outcome is recorded before moving to another job. A `needs_review`, `failed`, or `skipped` result for one canonical job must not block unrelated eligible jobs.
 
-## First vertical slice acceptance test
+## Testing boundary
 
-The first application adapter is considered complete when one real supported listing can traverse:
+CI uses temporary SQLite databases and local fixtures/test doubles only. It must not depend on live job boards, live GitHub release downloads, or live application sites.
+
+The end-to-end regression contract is:
 
 ```text
-source discovery
--> catalog.sqlite
--> eligibility
--> queued
--> applying
--> candidate fields populated
--> resume uploaded if required
--> submitted
--> application_attempts recorded
--> job_status = applied
+published catalog fixture
+-> verified refresh
+-> jobs:next eligible handoff
+-> application:result durable outcome
+-> jobs:next duplicate/outcome suppression
 ```
 
-and the same canonical job cannot be automatically submitted a second time.
+`npm run check` must pass before merge.

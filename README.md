@@ -1,291 +1,133 @@
 # JobApplier V1
 
-Personal, local-first job discovery and Quick/Easy Apply automation.
+Personal, local-first job aggregation and deterministic Codex handoff for remote-US Quick/Easy Apply opportunities. The repository stops at verified job handoff and durable outcome recording; browser execution remains external.
 
-## End goal
-
-JobApplier is not just a job browser. It is a pipeline:
+## V1 workflow
 
 ```text
-Aggregate open jobs
-  -> keep accepted positions
-  -> keep confirmed remote-US opportunities
-  -> dedupe
-  -> identify supported Quick/Easy Apply jobs
-  -> build application queue
-  -> process one job at a time
-  -> submit when every required answer is known
-  -> record applied / needs_review / failed
-  -> continue
+GitHub Actions aggregate public job sources
+-> keep configured accepted positions
+-> require confirmed remote-US
+-> normalize + dedupe to stable job_id
+-> classify supported Quick/Easy Apply
+-> publish catalog.sqlite + manifest
+-> npm run jobs:next -- --limit N
+-> Codex + Ego Lite applies externally, one job at a time
+-> npm run application:result -- --job-id <id> --status <outcome>
+-> durable status prevents automatic duplicate handoff
 ```
 
-See [docs/PRD.md](docs/PRD.md) and [docs/TECHNICAL_DESIGN.md](docs/TECHNICAL_DESIGN.md).
+The repository prepares eligible work and records durable outcomes. It does **not** host a Jobs UI, maintain a required application queue, or drive application-site browser automation in V1.
 
-## Core architecture
+See [`docs/PRD.md`](docs/PRD.md), [`docs/TECHNICAL_DESIGN.md`](docs/TECHNICAL_DESIGN.md), [`docs/CODEX_RUNBOOK.md`](docs/CODEX_RUNBOOK.md), and [`docs/TDD.md`](docs/TDD.md).
 
-### GitHub Actions: public market data
+## Architecture
 
-GitHub Actions aggregates job-market data into `catalog.sqlite`.
+### `catalog.sqlite`: public, replaceable market data
 
-It owns:
+GitHub Actions owns public discovery and publication:
 
-- source adapters
-- normalization
+- `SourceAdapter` fetching/parsing
 - accepted-position filtering
 - confirmed remote-US filtering
-- stable canonical IDs
-- conservative deduplication
+- normalization and stable canonical identity
+- conservative cross-source dedupe
 - Quick/Easy Apply classification
-- catalog validation/publication
+- validation, manifest generation, and release publication
 
-### Local Next.js app: private application state
+Candidate data, credentials, resumes, saved answers, and application history must never enter catalog artifacts.
 
-The local app owns `user.sqlite` and browser automation.
+### `user.sqlite`: private, durable application state
 
-It owns:
+The current V1 CLI uses durable job status/history to suppress prior outcomes. Replacing `catalog.sqlite` must never erase or modify `user.sqlite`.
 
-- candidate profile
-- resume
-- explicit saved answers
-- application queue
-- application runner
-- attempts and outcomes
-- durable `applied` protection
-
-Candidate information must not be pushed into the GitHub Actions catalog. Catalog validation explicitly rejects known private user-state tables before publication.
-
-## Development rules
-
-Coding agents and contributors must follow [`AGENTS.md`](./AGENTS.md) and the test-driven development policy in [`docs/TDD.md`](./docs/TDD.md). Behavior changes follow red -> green -> refactor, and `npm run check` is the local completion gate.
+Legacy private tables may remain in an existing `user.sqlite`; cleanup is intentionally non-destructive.
 
 ## Accepted positions
 
-Edit only the allowlist in:
+Edit the explicit allowlist in:
 
 ```text
 src/config/acceptedPositions.ts
 ```
 
-Matching is intentionally conservative. Titles and configured positions are normalized, then the accepted position must appear as a contiguous sequence of whole words in the job title.
+Matching is intentionally conservative. An empty allowlist fails aggregation and must never mean "accept all."
 
-For an accepted position of `project manager`:
+## Primary local commands
 
-```text
-MATCH     Project Manager
-MATCH     Senior Project Manager
-MATCH     Technical Project Manager
-NO MATCH  Product Manager
-NO MATCH  Project Managerial Lead
+Install dependencies and initialize local schemas as needed:
+
+```bash
+npm ci
+npm run db:catalog:push
+npm run db:user:push
 ```
 
-A more-specific accepted position does not broaden downward. To add or remove a target role, edit the array only; matching behavior belongs in `src/jobs/acceptedPosition.ts` and should change only with tests first.
+Get the next deterministic batch:
 
-An empty allowlist fails aggregation intentionally and must never mean "accept all."
-
-## Two SQLite databases
-
-```text
-data/
-  catalog.sqlite   # generated remotely; replaceable/read-only locally
-  user.sqlite      # private local ledger; never overwritten by catalog sync
+```bash
+npm run jobs:next -- --limit 10
 ```
 
-The stable canonical `job_id` links them.
+`jobs:next` automatically checks the published `job-catalog` release. A newer catalog is downloaded, decompressed, SHA-256 verified, SQLite integrity checked, and atomically installed before selection. Refresh failure preserves the installed catalog and fails closed.
 
-## Application queue
+Record the result of each external Codex/Ego Lite attempt immediately:
 
-Only jobs that meet all eligibility rules enter the queue:
+```bash
+npm run application:result -- --job-id <job_id> --status applied
+npm run application:result -- --job-id <job_id> --status needs_review --reason "unknown required question"
+npm run application:result -- --job-id <job_id> --status failed --reason "supported flow changed"
+npm run application:result -- --job-id <job_id> --status skipped
+```
 
-- active catalog listing
+`applied` is terminal. `applied`, `skipped`, `needs_review`, and `failed` jobs are excluded from automatic handoff until an explicit future reset/retry path exists.
+
+## Eligibility
+
+Automatic handoff requires all of the following:
+
+- active listing
 - confirmed remote-US eligibility
-- confirmed `remote` work arrangement
-- confirmed Quick/Easy Apply
+- remote work arrangement
+- confirmed Quick/Easy Apply metadata
 - supported application type
 - application URL present
-- not previously applied
-- not skipped
+- no durable blocking local outcome
 
-Hybrid, onsite, and unknown work arrangements do not enter automatic processing.
+Unknown, hybrid, onsite, or unsupported jobs are not automatically handed to Codex.
 
-Queue states:
+## External application safety
 
-```text
-queued
-applying
-applied
-needs_review
-failed
-skipped
-```
+Codex + Ego Lite owns browser interaction outside this repository. Candidate-specific facts must never be invented. Unknown/ambiguous required answers, CAPTCHA, assessments, security challenges, unsupported page structures, or missing required candidate facts must become `needs_review` rather than being bypassed.
 
-The runner is sequential: one job at a time.
+## Aggregation and publication
 
-## Application adapters
-
-Each supported application platform implements:
-
-```ts
-interface ApplicationAdapter {
-  name: string;
-  canHandle(url: string): boolean | Promise<boolean>;
-  apply(context: ApplicationContext): Promise<ApplicationResult>;
-}
-```
-
-The adapter registry intentionally starts empty. Unsupported flows are marked `needs_review` rather than guessed through.
-
-## Human-review rule
-
-Do not invent candidate-specific answers.
-
-Unknown required questions, essays, assessments, CAPTCHAs, authentication/security challenges, missing candidate data, or unrecognized flows must stop that job with `needs_review` while allowing the queue to continue.
-
-## Initial job sources
-
-- Built In — enabled. Uses server-rendered HTTP pages, structured `ItemList` data, and rendered card metadata. CI uses captured local fixtures; source failures surface to the source runner rather than fabricating data.
-- GlobalWork.ai — stub, disabled until implemented
-- Remote.co — disabled until an appropriate programmatic ingestion path is established
-
-Each source should prefer:
-
-```text
-API
--> feed
--> structured page data
--> HTTP
--> Puppeteer
-```
-
-Built In currently uses structured server-rendered data over normal HTTP; Puppeteer is not required for this source.
-
-## Setup
+Development commands:
 
 ```bash
-cp .env.example .env.local
-npm ci
-npm run db:user:push
-npm run dev
-```
-
-Because the repository and `job-catalog` release are private, set `CATALOG_GITHUB_TOKEN` in `.env.local` to a GitHub token that can read this repository. Never commit that token.
-
-Open the Jobs screen at:
-
-```text
-http://localhost:3000/jobs
-```
-
-Use **Sync catalog** to pull the latest published catalog before browsing jobs.
-
-## Aggregation and catalog publication
-
-Local catalog commands for aggregation-development work:
-
-```bash
-npm run db:catalog:push
 npm run aggregate
 npm run catalog:validate
 npm run catalog:manifest
 npm run catalog:verify-manifest
 ```
 
-The GitHub Actions publication sequence is:
-
-```text
-restore last published catalog if present
--> apply catalog schema
--> aggregate enabled sources
--> validate SQLite integrity and publication invariants
--> generate manifest from the exact database
--> verify manifest SHA-256 and metadata against the database
--> gzip catalog.sqlite
--> publish catalog.sqlite.gz + manifest.json to the job-catalog release
-```
-
-Publication validation fails closed when the catalog is empty, contains non-remote/non-US rows, contains orphaned source rows, has no successful source in the latest run, or contains known private user-state tables.
-
-`.github/workflows/aggregate-jobs.yml` can always be run with `workflow_dispatch`. Scheduled execution is configured every four hours at minute 17 in `America/Chicago` and runs when the repository variable is set:
-
-```text
-ENABLE_AGGREGATION=true
-```
-
-## Local catalog sync and Jobs UI
-
-The local app consumes the published `job-catalog` GitHub Release through a server-only sync path:
-
-```text
-GitHub Release metadata
--> resolve manifest.json + catalog.sqlite.gz assets
--> download with optional private-repo token
--> compare generatedAt with local catalog
--> decompress to a temporary file
--> verify SHA-256 of the exact uncompressed database
--> verify SQLite integrity
--> atomically replace data/catalog.sqlite
-```
-
-If the remote catalog is not newer, the database asset is not downloaded. If download, hash, decompression, or SQLite validation fails, the existing local catalog is preserved. The sync path never opens or modifies `user.sqlite`.
-
-The Jobs screen reads `catalog.sqlite` with SQLite read-only/query-only mode and supports:
-
-- text search across title, company, location, and description
-- accepted-position filter
-- source filter
-- lifecycle filter
-- Quick/Easy Apply filter
-- normalized job detail view
-- source links and preferred apply link
-
-Private GitHub credentials stay server-side and are never rendered into the browser.
-
-## Queue commands
-
-After real catalog data, candidate data, and an active resume exist:
-
-```bash
-npm run queue:sync
-npm run queue:run
-```
-
-`queue:sync` adds newly eligible canonical jobs to the local queue.
-
-`queue:run` processes jobs sequentially. Until a concrete application adapter is registered, eligible jobs will safely become `needs_review` with `unsupported_application_flow`.
-
-## Stable identity / duplicate protection
-
-When ingesting a posting, identity resolution checks:
-
-1. existing source + source job ID
-2. existing exact canonical application URL
-3. one exact normalized company/title/location match
-4. deterministic fingerprint for a genuinely new job
-
-Repeated source runs update existing rows rather than duplicating them. If multiple existing jobs share the same normalized fingerprint, the aggregator does not guess which one to merge; the incoming job remains separate.
-
-Once a canonical job is locally `applied`, it must never automatically be submitted again even if the catalog refreshes or another source discovers it.
-
-## Current catalog artifact
-
-The `job-catalog` GitHub Release contains:
+GitHub Actions publishes:
 
 ```text
 catalog.sqlite.gz
 manifest.json
 ```
 
-The manifest hashes the uncompressed `catalog.sqlite`. Local synchronization verifies that hash and SQLite integrity before replacing the local catalog without touching `user.sqlite`.
+Publication validation fails closed on invalid/unsafe artifacts, including known private user-state tables.
 
-## Next vertical slice
+## Development rules
 
-With catalog publication, local sync, and Jobs browsing in place, the next vertical slice is private candidate state:
+All behavior changes follow red -> green -> refactor under [`AGENTS.md`](AGENTS.md) and [`docs/TDD.md`](docs/TDD.md).
 
-```text
-candidate profile
--> active resume
--> saved reusable answers
--> local user.sqlite persistence
--> queue eligibility context
+The completion gate is:
+
+```bash
+npm run check
 ```
 
-That work is tracked by issue #6.
+It must pass the deterministic test suite and TypeScript production check before merge.

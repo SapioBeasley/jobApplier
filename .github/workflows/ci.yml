@@ -12,8 +12,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      PUPPETEER_SKIP_DOWNLOAD: "true"
 
     steps:
       - name: Check out repository
