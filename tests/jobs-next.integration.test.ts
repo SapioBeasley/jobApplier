@@ -159,8 +159,10 @@ describe("getNextJobs", () => {
     const userPath = path.join(dir, "user.sqlite");
 
     createCatalog(catalogPath, "2026-09-15T00:00:00.000Z", [
-      { id: "applied", postedAt: 3000 },
-      { id: "skipped", postedAt: 2900 },
+      { id: "applied", postedAt: 3200 },
+      { id: "skipped", postedAt: 3100 },
+      { id: "needs-review", postedAt: 3000 },
+      { id: "failed", postedAt: 2900 },
       { id: "newest", postedAt: 2800, source: "builtin" },
       { id: "older", postedAt: 2700, source: "globalwork" },
       { id: "onsite", postedAt: 2600, remoteType: "onsite" },
@@ -173,6 +175,8 @@ describe("getNextJobs", () => {
     createUserDb(userPath, [
       ["applied", "applied"],
       ["skipped", "skipped"],
+      ["needs-review", "needs_review"],
+      ["failed", "failed"],
     ]);
 
     const all = await getNextJobs({
