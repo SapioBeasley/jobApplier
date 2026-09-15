@@ -31,6 +31,11 @@ type ExistingStatus = {
 };
 
 const SUPPORTED_STATUSES = new Set<string>(APPLICATION_RESULT_STATUSES);
+const PRE_APPLICATION_STATUSES = new Set<string>([
+  "new",
+  "saved",
+  "reviewed",
+]);
 const RESET_REQUIRED_STATUSES = new Set<string>([
   "needs_review",
   "failed",
@@ -74,8 +79,11 @@ function assertCanonicalJobExists(catalogPath: string, jobId: string) {
   }
 }
 
-function assertTransitionAllowed(previousStatus: string | null, nextStatus: ApplicationResultStatus) {
-  if (!previousStatus || previousStatus === "new") return;
+function assertTransitionAllowed(
+  previousStatus: string | null,
+  nextStatus: ApplicationResultStatus,
+) {
+  if (!previousStatus || PRE_APPLICATION_STATUSES.has(previousStatus)) return;
   if (previousStatus === nextStatus) return;
   if (previousStatus === "applied") {
     throw new Error("applied is terminal and cannot transition to another status");
@@ -85,7 +93,9 @@ function assertTransitionAllowed(previousStatus: string | null, nextStatus: Appl
       `${previousStatus} requires an explicit reset before recording another application result`,
     );
   }
-  throw new Error(`Unsupported application status transition: ${previousStatus} -> ${nextStatus}`);
+  throw new Error(
+    `Unsupported application status transition: ${previousStatus} -> ${nextStatus}`,
+  );
 }
 
 export function recordApplicationResult(
@@ -115,7 +125,11 @@ export function recordApplicationResult(
       assertTransitionAllowed(previousStatus, status);
 
       if (previousStatus === status) {
-        return { jobId, status, changed: false } satisfies RecordApplicationResultOutput;
+        return {
+          jobId,
+          status,
+          changed: false,
+        } satisfies RecordApplicationResultOutput;
       }
 
       const changedAt = now();
@@ -161,7 +175,11 @@ export function recordApplicationResult(
         )
         .run(id(), jobId, previousStatus, status, changedAt);
 
-      return { jobId, status, changed: true } satisfies RecordApplicationResultOutput;
+      return {
+        jobId,
+        status,
+        changed: true,
+      } satisfies RecordApplicationResultOutput;
     });
 
     return tx();
