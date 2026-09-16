@@ -75,12 +75,12 @@ jobs:
             echo
             echo "| Source | Status | Fetched | Accepted | Created | Updated | Rejected | Error |"
             echo "| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |"
-            sqlite3 -separator '|' "$CATALOG_DB_PATH" "
+            sqlite3 "$CATALOG_DB_PATH" "
               SELECT '| ' || source || ' | ' || status || ' | ' || jobs_fetched || ' | ' ||
                      jobs_accepted || ' | ' || jobs_created || ' | ' || jobs_updated || ' | ' ||
-                     jobs_rejected || ' | ' || replace(coalesce(error_message, ''), '|', '\\|') || ' |'
+                     jobs_rejected || ' | ' || replace(replace(coalesce(error_message, ''), '|', '\\|'), char(10), ' ') || ' |'
               FROM source_runs
-              WHERE run_id = (SELECT id FROM aggregation_runs ORDER BY started_at DESC LIMIT 1)
+              WHERE run_id = (SELECT value FROM catalog_metadata WHERE key = 'last_run_id')
               ORDER BY source;
             "
           } >> "$GITHUB_STEP_SUMMARY"
