@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { builtInSearchPositions } from "../sources/builtin/searchPositions";
 import { acceptedPositions } from "./acceptedPositions";
 
 const expectedExpandedPositions = [
@@ -35,5 +36,24 @@ const expectedExpandedPositions = [
 describe("acceptedPositions", () => {
   it("contains the expanded explicit project/program management allowlist", () => {
     expect(acceptedPositions).toEqual(expectedExpandedPositions);
+  });
+
+  it("keeps Built In discovery queries compact instead of querying every accepted title", () => {
+    expect(builtInSearchPositions.length).toBeLessThan(acceptedPositions.length);
+    expect(builtInSearchPositions).toEqual([
+      "project manager",
+      "program manager",
+      "project coordinator",
+      "program coordinator",
+      "project management specialist",
+      "implementation manager",
+      "delivery manager",
+      "portfolio manager",
+      "process improvement manager",
+      "continuous improvement manager",
+      "project lead",
+      "program lead",
+      "pmo manager",
+    ]);
   });
 });
