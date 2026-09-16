@@ -1,6 +1,6 @@
-import { acceptedPositions } from "../../config/acceptedPositions";
 import type { SourceAdapter } from "../types";
 import { collectBuiltInJobs } from "./fetch";
+import { builtInSearchPositions } from "./searchPositions";
 
 export const builtinAdapter: SourceAdapter = {
   name: "builtin",
@@ -8,7 +8,7 @@ export const builtinAdapter: SourceAdapter = {
 
   async fetchJobs() {
     return collectBuiltInJobs({
-      positions: acceptedPositions,
+      positions: builtInSearchPositions,
     });
   },
 };
