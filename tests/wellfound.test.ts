@@ -5,6 +5,7 @@ import { buildWellfoundSearchUrl, collectWellfoundJobs } from "../src/sources/we
 import { parseWellfoundListPage } from "../src/sources/wellfound/parser";
 
 const fixture = fs.readFileSync(path.join(process.cwd(), "tests/fixtures/wellfound-project-management.html"), "utf8");
+const renderedCardsFixture = fs.readFileSync(path.join(process.cwd(), "tests/fixtures/wellfound-rendered-cards.html"), "utf8");
 
 describe("Wellfound parser", () => {
   it("maps structured Wellfound jobs conservatively into SourceJob records", () => {
@@ -26,6 +27,29 @@ describe("Wellfound parser", () => {
       applicationType: "quick_apply",
       applyUrl: "https://wellfound.com/jobs/4644413-technical-project-manager",
     });
+  });
+
+  it("parses current rendered listing cards when JobPosting JSON-LD is absent", () => {
+    const jobs = parseWellfoundListPage(renderedCardsFixture);
+    expect(jobs).toHaveLength(3);
+    expect(jobs[0]).toMatchObject({
+      source: "wellfound",
+      sourceJobId: "4677983",
+      sourceUrl: "https://wellfound.com/jobs/4677983-technical-project-manager",
+      title: "Technical Project Manager",
+      company: "SprintFWD",
+      remoteType: "remote",
+      remoteUsEligible: true,
+      quickApply: "unknown",
+      applicationType: "unknown",
+      applyUrl: null,
+    });
+  });
+
+  it("keeps rendered worldwide and location-only listings out of remote-US eligibility", () => {
+    const jobs = parseWellfoundListPage(renderedCardsFixture);
+    expect(jobs[1]).toMatchObject({ company: "Gunpowder Innovations", remoteType: "remote", remoteUsEligible: false });
+    expect(jobs[2]).toMatchObject({ company: "Scope Labs", remoteType: "unknown", remoteUsEligible: false });
   });
 
   it("does not treat worldwide remote eligibility as confirmed US eligibility", () => {
@@ -53,6 +77,13 @@ describe("Wellfound fetch orchestration", () => {
     const jobs = await collectWellfoundJobs({ positions: ["technical project manager"], maxPages: 2, fetchPage: async (url) => { calls.push(url); return fixture; } });
     expect(jobs).toHaveLength(3);
     expect(calls).toEqual(["https://wellfound.com/role/r/technical-project-manager?page=1", "https://wellfound.com/role/r/technical-project-manager?page=2"]);
+  });
+
+  it("continues pagination for rendered listing pages", async () => {
+    const calls: string[] = [];
+    const jobs = await collectWellfoundJobs({ positions: ["project manager"], maxPages: 2, fetchPage: async (url) => { calls.push(url); return renderedCardsFixture; } });
+    expect(jobs).toHaveLength(3);
+    expect(calls).toHaveLength(2);
   });
 
   it("surfaces total source failure instead of returning fabricated data", async () => {

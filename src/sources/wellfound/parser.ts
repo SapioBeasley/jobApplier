@@ -12,6 +12,18 @@ function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function decodeHtml(value: string): string {
+  return value
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&bull;|&#8226;|&#x2022;/gi, "•")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function absoluteUrl(value: unknown): string | null {
   const raw = text(value);
   if (!raw) return null;
@@ -51,7 +63,10 @@ function organizationName(job: JsonRecord): string | null {
 
 function remoteEligibility(job: JsonRecord): { remoteType: SourceJob["remoteType"]; remoteUsEligible: boolean; restrictions: string | null } {
   const remote = text(job.jobLocationType)?.toUpperCase() === "TELECOMMUTE";
-  if (!remote) return { remoteType: "onsite", remoteUsEligible: false, restrictions: null };
+  if (!remote) {
+    const hasPhysicalLocation = Boolean(job.jobLocation);
+    return { remoteType: hasPhysicalLocation ? "onsite" : "unknown", remoteUsEligible: false, restrictions: null };
+  }
   const requirements = Array.isArray(job.applicantLocationRequirements) ? job.applicantLocationRequirements : [job.applicantLocationRequirements];
   const names = requirements.map((entry) => text(asRecord(entry)?.name)).filter((value): value is string => Boolean(value));
   const normalized = names.map((name) => name.toLowerCase().replace(/\./g, "").trim());
@@ -75,7 +90,7 @@ function hasApplyEvidence(html: string, id: string | null): boolean {
   return /<button\b[^>]*>\s*Apply\s*<\/button>/i.test(card);
 }
 
-export function parseWellfoundListPage(html: string): SourceJob[] {
+function parseStructuredJobs(html: string): SourceJob[] {
   const output: SourceJob[] = [];
   for (const job of structuredJobs(html)) {
     const url = absoluteUrl(job.url);
@@ -107,4 +122,74 @@ export function parseWellfoundListPage(html: string): SourceJob[] {
     });
   }
   return output;
+}
+
+interface LinkMatch {
+  index: number;
+  end: number;
+  href: string;
+  label: string;
+}
+
+function linksMatching(html: string, pathPattern: RegExp): LinkMatch[] {
+  const links: LinkMatch[] = [];
+  const anchorPattern = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  for (const match of html.matchAll(anchorPattern)) {
+    if (!pathPattern.test(match[1])) continue;
+    links.push({ index: match.index ?? 0, end: (match.index ?? 0) + match[0].length, href: match[1], label: decodeHtml(match[2]) });
+  }
+  return links;
+}
+
+function renderedRemoteEvidence(segment: string): { remoteType: SourceJob["remoteType"]; remoteUsEligible: boolean; restrictions: string | null } {
+  const plain = decodeHtml(segment);
+  const match = /\b(Remote only|Remote)\s*•\s*([^|<>]+?)(?=\s{2,}|\b\d+\s+years? of exp\b|\b(?:today|yesterday|\d+\s+(?:days?|weeks?|months?|years?)\s+ago)\b|$)/i.exec(plain);
+  if (!match) return { remoteType: "unknown", remoteUsEligible: false, restrictions: null };
+  const restriction = match[2].trim().replace(/\s+/g, " ");
+  const normalized = restriction.toLowerCase().replace(/\./g, "").trim();
+  const confirmedUs = normalized === "united states" || normalized === "us" || normalized === "usa";
+  return { remoteType: "remote", remoteUsEligible: confirmedUs, restrictions: restriction };
+}
+
+function parseRenderedJobs(html: string): SourceJob[] {
+  const jobLinks = linksMatching(html, /^\/jobs\/\d+(?:-|\/|$)/);
+  const companyLinks = linksMatching(html, /^\/company\//);
+  const output: SourceJob[] = [];
+
+  for (let index = 0; index < jobLinks.length; index += 1) {
+    const jobLink = jobLinks[index];
+    if (!jobLink.label) continue;
+    const companyLink = companyLinks.filter((link) => link.index < jobLink.index).at(-1);
+    if (!companyLink?.label) continue;
+
+    const nextJobIndex = jobLinks[index + 1]?.index ?? html.length;
+    const segment = html.slice(jobLink.end, nextJobIndex);
+    const remote = renderedRemoteEvidence(segment);
+    const url = absoluteUrl(jobLink.href);
+    if (!url) continue;
+
+    output.push({
+      source: "wellfound",
+      sourceJobId: /\/jobs\/(\d+)/.exec(jobLink.href)?.[1] ?? null,
+      sourceUrl: url,
+      title: jobLink.label,
+      company: companyLink.label,
+      location: remote.restrictions,
+      remoteType: remote.remoteType,
+      remoteRestrictions: remote.restrictions,
+      remoteUsEligible: remote.remoteUsEligible,
+      applicationType: "unknown",
+      quickApply: "unknown",
+      applyUrl: null,
+    });
+  }
+
+  return output;
+}
+
+export function parseWellfoundListPage(html: string): SourceJob[] {
+  const byUrl = new Map<string, SourceJob>();
+  for (const job of parseRenderedJobs(html)) byUrl.set(job.sourceUrl, job);
+  for (const job of parseStructuredJobs(html)) byUrl.set(job.sourceUrl, job);
+  return [...byUrl.values()];
 }
