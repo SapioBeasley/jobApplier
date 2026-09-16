@@ -87,7 +87,7 @@ function hasApplyEvidence(html: string, id: string | null): boolean {
   if (!id) return false;
   const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const card = new RegExp(`<[^>]+data-job-id=["']${escaped}["'][^>]*>[\\s\\S]{0,3000}?(?=<[^>]+data-job-id=|$)`, "i").exec(html)?.[0] ?? "";
-  return /<button\b[^>]*>\s*Apply\s*<\/button>/i.test(card);
+  return /<button\b[^>]*>\s*Apply\s*<\/button>/i.test(card) && !/Apply\s+on\s+website/i.test(decodeHtml(card));
 }
 
 function parseStructuredJobs(html: string): SourceJob[] {
@@ -151,6 +151,13 @@ function renderedRemoteEvidence(segment: string): { remoteType: SourceJob["remot
   return { remoteType: "remote", remoteUsEligible: confirmedUs, restrictions: restriction };
 }
 
+function renderedApplicationEvidence(segment: string): "quick_apply" | "external" | "unknown" {
+  const plain = decodeHtml(segment);
+  if (/\bApply\s+on\s+website\b/i.test(plain)) return "external";
+  if (/<button\b[^>]*>\s*Apply\s*<\/button>/i.test(segment)) return "quick_apply";
+  return "unknown";
+}
+
 function parseRenderedJobs(html: string): SourceJob[] {
   const jobLinks = linksMatching(html, /^\/jobs\/\d+(?:-|\/|$)/);
   const companyLinks = linksMatching(html, /^\/company\//);
@@ -165,8 +172,10 @@ function parseRenderedJobs(html: string): SourceJob[] {
     const nextJobIndex = jobLinks[index + 1]?.index ?? html.length;
     const segment = html.slice(jobLink.end, nextJobIndex);
     const remote = renderedRemoteEvidence(segment);
+    const applicationEvidence = renderedApplicationEvidence(segment);
     const url = absoluteUrl(jobLink.href);
     if (!url) continue;
+    const quickApply = remote.remoteUsEligible && applicationEvidence === "quick_apply";
 
     output.push({
       source: "wellfound",
@@ -178,9 +187,9 @@ function parseRenderedJobs(html: string): SourceJob[] {
       remoteType: remote.remoteType,
       remoteRestrictions: remote.restrictions,
       remoteUsEligible: remote.remoteUsEligible,
-      applicationType: "unknown",
-      quickApply: "unknown",
-      applyUrl: null,
+      applicationType: quickApply ? "quick_apply" : "unknown",
+      quickApply: quickApply ? "yes" : "unknown",
+      applyUrl: quickApply ? url : null,
     });
   }
 
