@@ -28,4 +28,14 @@ describe("aggregation workflow", () => {
     expect(compressAt).toBeGreaterThan(verifyAt);
     expect(publishAt).toBeGreaterThan(compressAt);
   });
+
+  it("publishes a per-source aggregation table to the GitHub Actions step summary", () => {
+    const aggregateAt = workflow.indexOf("npm run aggregate");
+    const summaryAt = workflow.indexOf("Source aggregation summary");
+
+    expect(summaryAt).toBeGreaterThan(aggregateAt);
+    expect(workflow).toContain("$GITHUB_STEP_SUMMARY");
+    expect(workflow).toContain("Source | Status | Fetched | Accepted | Created | Updated | Rejected | Error");
+    expect(workflow).toContain("FROM source_runs");
+  });
 });
