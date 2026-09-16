@@ -11,7 +11,7 @@ const fixture = fs.readFileSync(
 const now = new Date("2026-09-15T12:00:00.000Z");
 
 describe("Built In pagination coverage", () => {
-  it("uses the bounded 10-page default while still allowing duplicate-tail early stop", async () => {
+  it("uses the bounded 50-page default while still allowing duplicate-tail early stop", async () => {
     const calls: string[] = [];
 
     await collectBuiltInJobs({
@@ -24,9 +24,9 @@ describe("Built In pagination coverage", () => {
       },
     });
 
-    expect(calls).toHaveLength(10);
+    expect(calls).toHaveLength(50);
     expect(calls[0]).toContain("page=1");
-    expect(calls[9]).toContain("page=10");
+    expect(calls[49]).toContain("page=50");
   });
 
   it("continues with other search seeds when one seed request fails", async () => {
