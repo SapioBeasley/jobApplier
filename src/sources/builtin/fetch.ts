@@ -47,26 +47,35 @@ export async function collectBuiltInJobs(args: {
   const positions = args.positions.map((position) => position.trim()).filter(Boolean);
   const seen = new Set<string>();
   const output: SourceJob[] = [];
+  const failures: string[] = [];
+  let successfulSeeds = 0;
 
   for (const position of positions) {
-    for (let page = 1; page <= maxPages; page += 1) {
-      const url = buildBuiltInSearchUrl(position, page);
-      const html = await fetchPage(url);
-      const jobs = parseBuiltInListPage(html, now);
-      let added = 0;
+    try {
+      for (let page = 1; page <= maxPages; page += 1) {
+        const url = buildBuiltInSearchUrl(position, page);
+        const html = await fetchPage(url);
+        const jobs = parseBuiltInListPage(html, now);
+        let added = 0;
 
-      for (const job of jobs) {
-        if (seen.has(job.sourceUrl)) continue;
-        seen.add(job.sourceUrl);
-        output.push(job);
-        added += 1;
+        for (const job of jobs) {
+          if (seen.has(job.sourceUrl)) continue;
+          seen.add(job.sourceUrl);
+          output.push(job);
+          added += 1;
+        }
+
+        if (jobs.length === 0 || added === 0) break;
       }
-
-      // Built In can return an empty page at the end of pagination. A page that
-      // contains only jobs already seen also means we have reached an overlapping
-      // tail and should not keep requesting pages unnecessarily.
-      if (jobs.length === 0 || added === 0) break;
+      successfulSeeds += 1;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push(`${position}: ${message}`);
     }
+  }
+
+  if (positions.length > 0 && successfulSeeds === 0) {
+    throw new Error(`All Built In search seeds failed: ${failures.join(" | ")}`);
   }
 
   return output;

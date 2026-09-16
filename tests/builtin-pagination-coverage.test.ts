@@ -28,4 +28,33 @@ describe("Built In pagination coverage", () => {
     expect(calls[0]).toContain("page=1");
     expect(calls[9]).toContain("page=10");
   });
+
+  it("continues with other search seeds when one seed request fails", async () => {
+    const jobs = await collectBuiltInJobs({
+      positions: ["project manager", "program manager"],
+      maxPages: 1,
+      now,
+      fetchPage: async (url) => {
+        if (url.includes("project%20manager")) {
+          throw new Error("simulated source request failure");
+        }
+        return fixture;
+      },
+    });
+
+    expect(jobs.length).toBeGreaterThan(0);
+  });
+
+  it("fails closed when every search seed fails", async () => {
+    await expect(
+      collectBuiltInJobs({
+        positions: ["project manager", "program manager"],
+        maxPages: 1,
+        now,
+        fetchPage: async () => {
+          throw new Error("simulated source request failure");
+        },
+      }),
+    ).rejects.toThrow("All Built In search seeds failed");
+  });
 });
