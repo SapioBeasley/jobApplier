@@ -143,7 +143,7 @@ function linksMatching(html: string, pathPattern: RegExp): LinkMatch[] {
 
 function renderedRemoteEvidence(segment: string): { remoteType: SourceJob["remoteType"]; remoteUsEligible: boolean; restrictions: string | null } {
   const plain = decodeHtml(segment);
-  const match = /\b(Remote only|Remote)\s*•\s*([^|<>]+?)(?=\s{2,}|\b\d+\s+years? of exp\b|\b(?:today|yesterday|\d+\s+(?:days?|weeks?|months?|years?)\s+ago)\b|$)/i.exec(plain);
+  const match = /\b(Remote only|Remote)\s*•\s*([^|<>]+?)(?=\s{2,}|\b\d+\s+years? of exp\b|\b(?:Save|Apply)\b|\b(?:today|yesterday|\d+\s+(?:days?|weeks?|months?|years?)\s+ago)\b|$)/i.exec(plain);
   if (!match) return { remoteType: "unknown", remoteUsEligible: false, restrictions: null };
   const restriction = match[2].trim().replace(/\s+/g, " ");
   const normalized = restriction.toLowerCase().replace(/\./g, "").trim();
