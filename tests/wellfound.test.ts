@@ -29,9 +29,9 @@ describe("Wellfound parser", () => {
     });
   });
 
-  it("parses current rendered listing cards when JobPosting JSON-LD is absent", () => {
+  it("classifies rendered Wellfound on-platform Apply as quick apply", () => {
     const jobs = parseWellfoundListPage(renderedCardsFixture);
-    expect(jobs).toHaveLength(3);
+    expect(jobs).toHaveLength(5);
     expect(jobs[0]).toMatchObject({
       source: "wellfound",
       sourceJobId: "4677983",
@@ -40,16 +40,22 @@ describe("Wellfound parser", () => {
       company: "SprintFWD",
       remoteType: "remote",
       remoteUsEligible: true,
-      quickApply: "unknown",
-      applicationType: "unknown",
-      applyUrl: null,
+      quickApply: "yes",
+      applicationType: "quick_apply",
+      applyUrl: "https://wellfound.com/jobs/4677983-technical-project-manager",
     });
+  });
+
+  it("does not classify Apply on website or missing action evidence as quick apply", () => {
+    const jobs = parseWellfoundListPage(renderedCardsFixture);
+    expect(jobs[3]).toMatchObject({ company: "External Co", remoteUsEligible: true, quickApply: "unknown", applicationType: "unknown", applyUrl: null });
+    expect(jobs[4]).toMatchObject({ company: "Ambiguous Co", remoteUsEligible: true, quickApply: "unknown", applicationType: "unknown", applyUrl: null });
   });
 
   it("keeps rendered worldwide and location-only listings out of remote-US eligibility", () => {
     const jobs = parseWellfoundListPage(renderedCardsFixture);
-    expect(jobs[1]).toMatchObject({ company: "Gunpowder Innovations", remoteType: "remote", remoteUsEligible: false });
-    expect(jobs[2]).toMatchObject({ company: "Scope Labs", remoteType: "unknown", remoteUsEligible: false });
+    expect(jobs[1]).toMatchObject({ company: "Gunpowder Innovations", remoteType: "remote", remoteUsEligible: false, quickApply: "unknown" });
+    expect(jobs[2]).toMatchObject({ company: "Scope Labs", remoteType: "unknown", remoteUsEligible: false, quickApply: "unknown" });
   });
 
   it("does not treat worldwide remote eligibility as confirmed US eligibility", () => {
@@ -82,7 +88,7 @@ describe("Wellfound fetch orchestration", () => {
   it("continues pagination for rendered listing pages", async () => {
     const calls: string[] = [];
     const jobs = await collectWellfoundJobs({ positions: ["project manager"], maxPages: 2, fetchPage: async (url) => { calls.push(url); return renderedCardsFixture; } });
-    expect(jobs).toHaveLength(3);
+    expect(jobs).toHaveLength(5);
     expect(calls).toHaveLength(2);
   });
 
