@@ -1,15 +1,7 @@
-/**
- * Only jobs whose normalized title matches at least one accepted position
- * will be stored in the catalog.
- *
- * Matching is phrase-based after normalization. For example:
- * - "project manager" matches "Senior Project Manager"
- * - "program manager" matches "Technical Program Manager"
- *
- * Keep this intentionally explicit. An empty array causes aggregation to fail
- * rather than silently ingesting every job.
- */
-export const acceptedPositions = [
+import { describe, expect, it } from "vitest";
+import { acceptedPositions } from "./acceptedPositions";
+
+const expectedExpandedPositions = [
   "project manager",
   "senior project manager",
   "program manager",
@@ -39,3 +31,9 @@ export const acceptedPositions = [
   "project lead",
   "program lead",
 ] as const;
+
+describe("acceptedPositions", () => {
+  it("contains the expanded explicit project/program management allowlist", () => {
+    expect(acceptedPositions).toEqual(expectedExpandedPositions);
+  });
+});

@@ -60,13 +60,37 @@ describe("accepted position matching", () => {
   });
 });
 
-describe("initial accepted position configuration", () => {
-  it("targets the project/program delivery family", () => {
+describe("accepted position configuration", () => {
+  it("targets the expanded project/program delivery family", () => {
     expect(acceptedPositions).toEqual([
       "project manager",
+      "senior project manager",
       "program manager",
+      "senior program manager",
       "project coordinator",
+      "program coordinator",
       "project management specialist",
+      "technical project manager",
+      "implementation project manager",
+      "implementation manager",
+      "operations project manager",
+      "operations program manager",
+      "business project manager",
+      "strategic project manager",
+      "pmo project manager",
+      "pmo manager",
+      "project delivery manager",
+      "delivery manager",
+      "client project manager",
+      "portfolio manager",
+      "portfolio project manager",
+      "transformation project manager",
+      "change management project manager",
+      "process improvement manager",
+      "continuous improvement manager",
+      "agile project manager",
+      "project lead",
+      "program lead",
     ]);
   });
 });
